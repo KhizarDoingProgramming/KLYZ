@@ -1,0 +1,22 @@
+node_modules
+.next
+out
+build
+dist
+*.tsbuildinfo
+next-env.d.ts
+
+# Secrets and local environment — only the template is committed.
+.env
+.env.*
+!.env.example
+
+# Runtime state: the local SQLite store, its key and any log files.
+.klyz/
+*.db
+*.db-wal
+*.db-shm
+*.log
+npm-debug.log*
+
+.DS_Store

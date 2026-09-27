@@ -1,0 +1,10 @@
+{
+  "name": "KLYZ — Visual workflow automation",
+  "short_name": "KLYZ",
+  "description": "Connect events, data, logic, APIs and AI into workflows you can watch, inspect and control.",
+  "start_url": "/dashboard",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0a0a09",
+  "theme_color": "#0a0a09"
+}

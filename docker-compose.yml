@@ -1,0 +1,80 @@
+name: klyz
+
+# Development infrastructure.
+#
+#   docker compose up -d redis postgres   # queue + integration database
+#   npm run dev:all                       # app + worker on the host
+#
+# The optional "app"/"worker" services run the same commands inside
+# containers:  docker compose --profile app up -d
+
+services:
+  redis:
+    image: redis:8-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: klyz
+      POSTGRES_PASSWORD: klyz
+      POSTGRES_DB: klyz_integrations
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U klyz -d klyz_integrations"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  api:
+    profiles: ["app"]
+    build: .
+    command: npm run dev
+    environment:
+      KLYZ_REDIS_URL: redis://redis:6379
+      KLYZ_QUEUE_DRIVER: redis
+      KLYZ_PG_URL: postgres://klyz:klyz@postgres:5432/klyz_integrations
+    ports:
+      - "3000:3000"
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/.next
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+
+  worker:
+    profiles: ["app"]
+    build: .
+    command: npm run worker
+    environment:
+      KLYZ_REDIS_URL: redis://redis:6379
+      KLYZ_QUEUE_DRIVER: redis
+      KLYZ_PG_URL: postgres://klyz:klyz@postgres:5432/klyz_integrations
+    volumes:
+      - .:/app
+      - /app/node_modules
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+
+volumes:
+  redis-data:
+  pg-data:

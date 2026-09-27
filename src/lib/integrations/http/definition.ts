@@ -1,0 +1,117 @@
+import type { NodeDefinition } from "@/lib/workflow/types";
+
+const HTTP_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"] as const;
+
+/** Node definition for the HTTP integration (moved out of the core registry). */
+export const httpDefinition: NodeDefinition = {
+  type: "action.http",
+  category: "action",
+  title: "HTTP request",
+  description: "Calls any REST API. This is how KLYZ reaches everything else.",
+  icon: "globe",
+  summary: "Calls an API",
+  cost: 220,
+  credentials: ["http_basic", "http_bearer", "http_header"],
+  fields: [
+    {
+      key: "method",
+      label: "Method",
+      kind: "select",
+      required: true,
+      options: HTTP_METHODS.map((method) => ({ value: method, label: method })),
+    },
+    {
+      key: "url",
+      label: "URL",
+      kind: "expression",
+      required: true,
+      bindable: true,
+      mono: true,
+      placeholder: "https://api.example.com/v1/users",
+      help: "Only public hosts are reachable unless KLYZ_HTTP_ALLOW_HOSTS says otherwise.",
+    },
+    { key: "query", label: "Query parameters", kind: "keyvalue", bindable: true },
+    { key: "headers", label: "Headers", kind: "keyvalue", bindable: true },
+    {
+      key: "auth",
+      label: "Authentication",
+      kind: "select",
+      options: [
+        { value: "none", label: "None" },
+        { value: "bearer", label: "Bearer token" },
+        { value: "basic", label: "Basic auth" },
+        { value: "header", label: "Custom header" },
+      ],
+    },
+    {
+      key: "credential",
+      label: "Stored credential",
+      kind: "credential",
+      help: "Optional. When set it supplies the auth headers; otherwise the settings below are used.",
+    },
+    {
+      key: "token",
+      label: "Token",
+      kind: "text",
+      mono: true,
+      showWhen: { key: "auth", equals: ["bearer", "header"] },
+      help: "Redacted from logs and execution history.",
+    },
+    {
+      key: "headerName",
+      label: "Header name",
+      kind: "text",
+      mono: true,
+      showWhen: { key: "auth", equals: "header" },
+      placeholder: "X-Api-Key",
+    },
+    {
+      key: "username",
+      label: "Username",
+      kind: "text",
+      showWhen: { key: "auth", equals: "basic" },
+    },
+    {
+      key: "password",
+      label: "Password",
+      kind: "text",
+      mono: true,
+      showWhen: { key: "auth", equals: "basic" },
+    },
+    {
+      key: "body",
+      label: "Body",
+      kind: "code",
+      bindable: true,
+      rows: 7,
+      placeholder: '{\n  "name": "{{user.name}}"\n}',
+      showWhen: { key: "method", equals: ["POST", "PUT", "PATCH"] },
+    },
+    {
+      key: "timeout",
+      label: "Timeout (ms)",
+      kind: "number",
+      placeholder: "10000",
+      help: "Must stay below the step timeout (15s by default) or the step wins the race.",
+    },
+    {
+      key: "followRedirects",
+      label: "Follow redirects",
+      kind: "toggle",
+      help: "Each hop is re-checked against the target policy.",
+    },
+    {
+      key: "allowFailure",
+      label: "Allow non-2xx responses",
+      kind: "toggle",
+      help: "Off: any 4xx/5xx fails the step. On: the response is returned with ok = false so a Condition can branch.",
+    },
+  ],
+  outputs: [
+    { key: "status", label: "Status", type: "number" },
+    { key: "ok", label: "OK", type: "boolean" },
+    { key: "body", label: "Body", type: "object" },
+    { key: "headers", label: "Headers", type: "object" },
+    { key: "durationMs", label: "Duration (ms)", type: "number" },
+  ],
+};

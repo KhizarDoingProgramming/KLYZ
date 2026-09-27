@@ -1,0 +1,52 @@
+{
+  "name": "klyz",
+  "version": "0.1.0",
+  "private": true,
+  "description": "KLYZ — visual workflow automation platform",
+  "scripts": {
+    "dev": "next dev",
+    "dev:all": "node scripts/dev-all.mjs",
+    "worker": "tsx src/worker/index.ts",
+    "worker:dev": "tsx watch src/worker/index.ts",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:unit": "vitest run --exclude \"**/*.infra.test.ts\"",
+    "infra:up": "docker compose up -d --wait redis postgres",
+    "infra:down": "docker compose down"
+  },
+  "dependencies": {
+    "@fontsource-variable/archivo": "^5.3.0",
+    "@fontsource-variable/inter": "^5.3.0",
+    "@fontsource-variable/jetbrains-mono": "^5.3.0",
+    "@xyflow/react": "^12.12.0",
+    "bullmq": "^6.3.8",
+    "clsx": "^2.1.1",
+    "cron-parser": "^5.10.1",
+    "ioredis": "^6.0.0",
+    "lucide-react": "^1.48.0",
+    "motion": "^13.4.3",
+    "next": "16.3.5",
+    "pg": "^8.23.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "tailwind-merge": "^3.7.0",
+    "zustand": "^5.0.15"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^22.20.4",
+    "@types/pg": "^8.23.1",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "esbuild": "^0.28.2",
+    "eslint": "^9",
+    "eslint-config-next": "16.3.5",
+    "tailwindcss": "^4",
+    "tsx": "^4.23.15",
+    "typescript": "^5",
+    "vitest": "^5.0.2"
+  }
+}

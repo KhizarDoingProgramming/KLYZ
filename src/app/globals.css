@@ -1,0 +1,799 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/* =========================================================================
+   KLYZ DESIGN TOKENS
+   Layered surface hierarchy + signal accent + semantic execution states.
+   Dark is the primary KLYZ environment; light is designed, not inverted.
+   ========================================================================= */
+
+@theme inline {
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, "SFMono-Regular",
+    Menlo, monospace;
+  /* Display voice — headlines, page titles, oversized numerals. */
+  --font-display: "Archivo Variable", "Inter Variable", ui-sans-serif,
+    system-ui, sans-serif;
+
+  /* --- surfaces (application → canvas → panels → nodes → overlays) --- */
+  --color-app: var(--kz-app);
+  --color-canvas: var(--kz-canvas);
+  --color-panel: var(--kz-panel);
+  --color-surface: var(--kz-surface);
+  --color-raised: var(--kz-raised);
+  --color-overlay: var(--kz-overlay);
+  --color-inset: var(--kz-inset);
+
+  /* --- borders --- */
+  --color-hairline: var(--kz-hairline);
+  --color-edge: var(--kz-edge);
+  --color-line: var(--kz-line);
+  --color-strong: var(--kz-strong);
+
+  /* --- text --- */
+  --color-fg: var(--kz-fg);
+  --color-muted: var(--kz-muted);
+  --color-subtle: var(--kz-subtle);
+  --color-disabled: var(--kz-disabled);
+
+  /* --- brand signal --- */
+  --color-signal: var(--kz-signal);
+  --color-signal-hover: var(--kz-signal-hover);
+  --color-signal-text: var(--kz-signal-text);
+  --color-signal-soft: var(--kz-signal-soft);
+  --color-signal-line: var(--kz-signal-line);
+
+  /* text/icon placed on top of the signal fill */
+  --color-on-signal: var(--kz-on-signal);
+
+  /* --- semantic execution states --- */
+  --color-live: var(--kz-live);
+  --color-ok: var(--kz-ok);
+  --color-danger: var(--kz-danger);
+  --color-warn: var(--kz-warn);
+  --color-info: var(--kz-info);
+  --color-idle: var(--kz-idle);
+
+  --color-live-soft: var(--kz-live-soft);
+  --color-ok-soft: var(--kz-ok-soft);
+  --color-danger-soft: var(--kz-danger-soft);
+  --color-warn-soft: var(--kz-warn-soft);
+  --color-info-soft: var(--kz-info-soft);
+
+  /* --- node categories --- */
+  --color-cat-trigger: var(--kz-cat-trigger);
+  --color-cat-action: var(--kz-cat-action);
+  --color-cat-logic: var(--kz-cat-logic);
+  --color-cat-ai: var(--kz-cat-ai);
+  --color-cat-data: var(--kz-cat-data);
+  --color-cat-utility: var(--kz-cat-utility);
+
+  /* --- radius scale (sharp, instrument-like: borders do the framing) --- */
+  --radius-xs: 2px;
+  --radius-sm: 2px;
+  --radius-md: 3px;
+  --radius-lg: 4px;
+  --radius-xl: 8px;
+
+  /* --- type scale ---
+     Display sizes are fluid (clamp) so editorial compositions hold their
+     proportion from 1280px to 2560px instead of leaving empty space. */
+  --text-display-lg: clamp(3.25rem, 7.6vw, 7.25rem);
+  --text-display-lg--line-height: 0.9;
+  --text-display-lg--letter-spacing: -0.042em;
+  --text-display-lg--font-weight: 600;
+
+  --text-display-md: clamp(2.5rem, 5vw, 4.75rem);
+  --text-display-md--line-height: 0.94;
+  --text-display-md--letter-spacing: -0.035em;
+  --text-display-md--font-weight: 600;
+
+  --text-display-sm: clamp(1.875rem, 3.4vw, 3rem);
+  --text-display-sm--line-height: 1;
+  --text-display-sm--letter-spacing: -0.03em;
+  --text-display-sm--font-weight: 600;
+
+  --text-page: clamp(1.625rem, 2.4vw, 2.375rem);
+  --text-page--line-height: 1.05;
+  --text-page--letter-spacing: -0.028em;
+  --text-page--font-weight: 600;
+
+  --text-h1: 1.625rem;
+  --text-h1--line-height: 1.25;
+  --text-h1--letter-spacing: -0.02em;
+  --text-h1--font-weight: 600;
+
+  --text-h2: 1.25rem;
+  --text-h2--line-height: 1.35;
+  --text-h2--letter-spacing: -0.014em;
+  --text-h2--font-weight: 600;
+
+  --text-h3: 0.9375rem;
+  --text-h3--line-height: 1.45;
+  --text-h3--letter-spacing: -0.008em;
+  --text-h3--font-weight: 600;
+
+  --text-body: 0.875rem;
+  --text-body--line-height: 1.55;
+
+  --text-sm: 0.8125rem;
+  --text-sm--line-height: 1.5;
+
+  --text-xs: 0.75rem;
+  --text-xs--line-height: 1.5;
+
+  --text-micro: 0.6875rem;
+  --text-micro--line-height: 1.4;
+
+  /* --- elevation (borders do most of the work) --- */
+  --shadow-hair: 0 1px 1px rgb(0 0 0 / 0.04);
+  --shadow-sm: var(--kz-shadow-sm);
+  --shadow-md: var(--kz-shadow-md);
+  --shadow-lg: var(--kz-shadow-lg);
+  --shadow-node: var(--kz-shadow-node);
+
+  /* --- motion --- */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-emph: cubic-bezier(0.2, 0, 0, 1);
+  --ease-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --duration-micro: 140ms;
+  --duration-standard: 220ms;
+  --duration-complex: 360ms;
+  --duration-reveal: 700ms;
+}
+
+/* ============================ DARK (default) ============================
+   Warm near-black: ink rather than blue-black. Surfaces step in warmth,
+   the lime signal stays KLYZ's single accent. */
+:root,
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --kz-app: #0a0a09;
+  --kz-canvas: #0c0c0b;
+  --kz-panel: #111110;
+  --kz-surface: #161614;
+  --kz-raised: #1c1c19;
+  --kz-overlay: #1f1e1b;
+  --kz-inset: #090908;
+
+  --kz-hairline: #151513;
+  --kz-edge: #1e1e1b;
+  --kz-line: #2a2a25;
+  --kz-strong: #3c3b34;
+
+  --kz-fg: #efece4;
+  --kz-muted: #a39f93;
+  --kz-subtle: #87837a;
+  --kz-disabled: #4c4a43;
+  --kz-on-signal: #0b0c07;
+
+  --kz-signal: #cbf74e;
+  --kz-signal-hover: #d8fb6e;
+  --kz-signal-text: #cbf74e;
+  --kz-signal-soft: rgb(203 247 78 / 0.1);
+  --kz-signal-line: rgb(203 247 78 / 0.34);
+
+  --kz-live: #cbf74e;
+  --kz-ok: #37d399;
+  --kz-danger: #ff6047;
+  --kz-warn: #ffb03a;
+  --kz-info: #6e9cff;
+  --kz-idle: #7b828e;
+
+  --kz-live-soft: rgb(203 247 78 / 0.11);
+  --kz-ok-soft: rgb(55 211 153 / 0.11);
+  --kz-danger-soft: rgb(255 96 71 / 0.12);
+  --kz-warn-soft: rgb(255 176 58 / 0.11);
+  --kz-info-soft: rgb(110 156 255 / 0.12);
+
+  --kz-cat-trigger: #cbf74e;
+  --kz-cat-action: #6e9cff;
+  --kz-cat-logic: #ffb03a;
+  --kz-cat-ai: #b49cff;
+  --kz-cat-data: #37d399;
+  --kz-cat-utility: #ff8fb3;
+
+  --kz-shadow-sm: 0 1px 2px rgb(0 0 0 / 0.5);
+  --kz-shadow-md: 0 6px 20px -6px rgb(0 0 0 / 0.6);
+  --kz-shadow-lg: 0 24px 60px -18px rgb(0 0 0 / 0.75);
+  --kz-shadow-node: 0 0 0 1px rgb(203 247 78 / 0.4), 0 10px 30px -12px rgb(0 0 0 / 0.8);
+
+  --kz-grid-line: rgb(255 252 240 / 0.04);
+  --kz-scrim: rgb(10 10 9 / 0.62);
+  --kz-selection: rgb(203 247 78 / 0.16);
+  --kz-scroll: rgb(255 255 255 / 0.14);
+  --kz-scroll-hover: rgb(255 255 255 / 0.26);
+}
+
+/* ============================== LIGHT ==================================
+   Warm paper — a designed light theme, not an inverted dark one. */
+[data-theme="light"] {
+  color-scheme: light;
+
+  --kz-app: #eae7df;
+  --kz-canvas: #f0ede6;
+  --kz-panel: #f6f4ee;
+  --kz-surface: #fbfaf6;
+  --kz-raised: #ffffff;
+  --kz-overlay: #ffffff;
+  --kz-inset: #efece4;
+
+  --kz-hairline: #e5e1d7;
+  --kz-edge: #ded9ce;
+  --kz-line: #cdc8ba;
+  --kz-strong: #b0aa9a;
+
+  --kz-fg: #17160f;
+  --kz-muted: #565349;
+  --kz-subtle: #69655b;
+  --kz-disabled: #aba696;
+  --kz-on-signal: #14150a;
+
+  --kz-signal: #c2ef36;
+  --kz-signal-hover: #b6e824;
+  --kz-signal-text: #4d6a00;
+  --kz-signal-soft: rgb(126 172 12 / 0.13);
+  --kz-signal-line: rgb(110 152 8 / 0.4);
+
+  --kz-live: #6f9800;
+  --kz-ok: #0c7050;
+  --kz-danger: #bb2f17;
+  --kz-warn: #8f5900;
+  --kz-info: #2a5fc4;
+  --kz-idle: #5f6470;
+
+  --kz-live-soft: rgb(126 172 12 / 0.14);
+  --kz-ok-soft: rgb(12 112 80 / 0.11);
+  --kz-danger-soft: rgb(187 47 23 / 0.1);
+  --kz-warn-soft: rgb(143 89 0 / 0.11);
+  --kz-info-soft: rgb(42 95 196 / 0.1);
+
+  --kz-cat-trigger: #4f6a00;
+  --kz-cat-action: #2a5fc4;
+  --kz-cat-logic: #8f5900;
+  --kz-cat-ai: #6144c9;
+  --kz-cat-data: #0c7050;
+  --kz-cat-utility: #b23459;
+
+  --kz-shadow-sm: 0 1px 2px rgb(23 22 15 / 0.06);
+  --kz-shadow-md: 0 6px 20px -8px rgb(23 22 15 / 0.16);
+  --kz-shadow-lg: 0 24px 60px -20px rgb(23 22 15 / 0.24);
+  --kz-shadow-node: 0 0 0 1px rgb(111 152 0 / 0.45), 0 10px 26px -14px rgb(23 22 15 / 0.3);
+
+  --kz-grid-line: rgb(23 22 15 / 0.055);
+  --kz-scrim: rgb(23 22 15 / 0.42);
+  --kz-selection: rgb(126 172 12 / 0.2);
+  --kz-scroll: rgb(23 22 15 / 0.16);
+  --kz-scroll-hover: rgb(23 22 15 / 0.3);
+}
+
+/* ============================== BASE =================================== */
+
+@layer base {
+  * {
+    border-color: var(--kz-edge);
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    background-color: var(--kz-app);
+    color: var(--kz-fg);
+    font-family: var(--font-sans);
+    font-size: var(--text-body);
+    font-feature-settings: "cv05" 1, "ss03" 1;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overscroll-behavior: none;
+  }
+
+  /* Headings speak in the display voice; Inter stays for UI body copy. */
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-family: var(--font-display);
+    font-feature-settings: normal;
+  }
+
+  /* Film grain — a quiet material layer over the whole product.
+     Static (no animation), non-interactive, tuned below visual noise. */
+  body::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: 2147483000;
+    pointer-events: none;
+    opacity: 0.05;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-size: 160px 160px;
+  }
+
+  [data-theme="light"] body::after {
+    opacity: 0.03;
+  }
+
+  ::selection {
+    background: var(--kz-selection);
+    color: var(--kz-fg);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--kz-signal);
+    outline-offset: 2px;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: var(--kz-scroll);
+    border: 3px solid transparent;
+    background-clip: content-box;
+    border-radius: 999px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--kz-scroll-hover);
+    background-clip: content-box;
+  }
+
+  ::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+
+  input,
+  textarea,
+  select,
+  button {
+    font: inherit;
+    color: inherit;
+  }
+
+  kbd {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    line-height: 1;
+  }
+}
+
+/* ============================ UTILITIES ================================ */
+
+@utility kz-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--kz-subtle);
+}
+
+@utility kz-num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+/* Display voice for div/spans that are not real headings. */
+@utility kz-display {
+  font-family: var(--font-display);
+  font-feature-settings: normal;
+}
+
+/* Vertical label roll: a one-line window over a two-copy track. */
+@utility kz-roll {
+  display: inline-block;
+  overflow: hidden;
+  height: 1.3em;
+  line-height: 1.3;
+  vertical-align: bottom;
+}
+
+.kz-roll .kz-roll-track {
+  display: flex;
+  flex-direction: column;
+  transition: transform 320ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.kz-roll .kz-roll-track > span {
+  display: block;
+  line-height: 1.3;
+}
+
+.group:hover .kz-roll .kz-roll-track,
+.group:focus-visible .kz-roll .kz-roll-track {
+  transform: translateY(-50%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kz-roll .kz-roll-track {
+    transition: none;
+  }
+  .group:hover .kz-roll .kz-roll-track,
+  .group:focus-visible .kz-roll .kz-roll-track {
+    transform: none;
+  }
+}
+
+/* Editorial frame: one margin system for every full-bleed section so the
+   composition holds from 1280px up to 2560px without empty deserts. */
+@utility kz-frame {
+  width: 100%;
+  max-width: 1680px;
+  margin-inline: auto;
+  padding-inline: clamp(20px, 3.5vw, 64px);
+}
+
+/* Narrower measure inside the frame for reading-length text. */
+@utility kz-measure {
+  max-width: 64ch;
+}
+
+/* Tailwind's built-in duration-* utility only parses numbers (duration-150)
+   and does not read the --duration-* namespace, so the KLYZ motion tokens
+   need their own utilities. Both --tw-duration and transition-duration are
+   set so the order relative to transition-* never matters. */
+@utility duration-micro {
+  --tw-duration: var(--duration-micro);
+  transition-duration: var(--duration-micro);
+}
+
+@utility duration-standard {
+  --tw-duration: var(--duration-standard);
+  transition-duration: var(--duration-standard);
+}
+
+@utility duration-complex {
+  --tw-duration: var(--duration-complex);
+  transition-duration: var(--duration-complex);
+}
+
+@utility duration-reveal {
+  --tw-duration: var(--duration-reveal);
+  transition-duration: var(--duration-reveal);
+}
+
+@utility kz-scrim {
+  background-color: var(--kz-scrim);
+  backdrop-filter: blur(2px);
+}
+
+@utility kz-hairline-t {
+  border-top: 1px solid var(--kz-edge);
+}
+
+@utility kz-hairline-b {
+  border-bottom: 1px solid var(--kz-edge);
+}
+
+/* The KLYZ grid: fine dots on a 16px pitch with a major line every 96px.
+   The live canvas draws the same pattern through React Flow so it pans
+   with the viewport; this utility is for static surfaces (hero, panels). */
+@utility kz-canvas-grid {
+  background-image: radial-gradient(var(--kz-line) 1px, transparent 1px),
+    linear-gradient(var(--kz-grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--kz-grid-line) 1px, transparent 1px);
+  background-size: 16px 16px, 96px 96px, 96px 96px;
+  background-position: -1px -1px;
+}
+
+/* ======================= REDUCED MOTION ================================ */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ==================== EXECUTION FLOW ANIMATION ====================== */
+
+@keyframes kz-dash {
+  to {
+    stroke-dashoffset: -24;
+  }
+}
+
+.kz-edge-flow {
+  stroke-dasharray: 5 7;
+  animation: kz-dash 0.55s linear infinite;
+}
+
+@keyframes kz-packet {
+  from {
+    stroke-dashoffset: 404;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.kz-edge-packet {
+  stroke-dasharray: 3.5 400;
+  animation: kz-packet 1.15s linear infinite;
+}
+
+@keyframes kz-wait {
+  to {
+    stroke-dashoffset: -22;
+  }
+}
+
+.kz-edge-wait {
+  stroke-dasharray: 4 7;
+  animation: kz-wait 1.4s linear infinite;
+}
+
+.kz-edge-skipped {
+  stroke-dasharray: 3 6;
+}
+
+@keyframes kz-node-breathe {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.kz-breathe {
+  animation: kz-node-breathe 1.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kz-edge-flow,
+  .kz-edge-packet,
+  .kz-edge-wait,
+  .kz-breathe {
+    animation: none !important;
+  }
+}
+
+/* ==================== REACT FLOW (canvas) ============================= */
+
+.react-flow {
+  --xy-background-color: transparent;
+}
+
+.react-flow__attribution {
+  display: none !important;
+}
+
+.react-flow__node {
+  cursor: grab;
+  border-radius: var(--radius-lg);
+}
+
+.react-flow__node:active {
+  cursor: grabbing;
+}
+
+.react-flow__node:focus {
+  outline: none;
+}
+
+.react-flow__node:focus-visible {
+  outline: 2px solid var(--kz-signal);
+  outline-offset: 4px;
+}
+
+.react-flow__node.dragging {
+  opacity: 0.92;
+}
+
+.react-flow__node-default,
+.react-flow__node-input,
+.react-flow__node-output,
+.react-flow__node-group {
+  background: var(--kz-surface);
+  border: 1px solid var(--kz-edge);
+  border-radius: var(--radius-lg);
+  color: var(--kz-fg);
+  box-shadow: var(--kz-shadow-node);
+}
+
+.react-flow__handle {
+  width: 9px;
+  height: 9px;
+  background: var(--kz-panel);
+  border: 1.5px solid var(--kz-strong);
+  border-radius: 999px;
+  transition:
+    transform 140ms var(--ease-out),
+    background-color 140ms var(--ease-out),
+    border-color 140ms var(--ease-out);
+}
+
+.react-flow__handle:hover,
+.react-flow__handle.connectingfrom,
+.react-flow__handle.connectingto {
+  border-color: var(--kz-signal);
+  background: var(--kz-signal-soft);
+  transform: scale(1.35);
+}
+
+.react-flow__handle.connectingfrom,
+.react-flow__handle.connectingto {
+  background: var(--kz-signal);
+}
+
+.react-flow__handle.connectingto,
+.react-flow__handle.no-connectingto {
+  cursor: crosshair;
+}
+
+.react-flow__handle.right {
+  top: 50%;
+}
+
+.react-flow__edge-path {
+  stroke-linecap: round;
+  transition: stroke 220ms var(--ease-out);
+}
+
+.react-flow__edge.selectable .react-flow__edge-interaction {
+  stroke-width: 20;
+}
+
+.react-flow__edge.selected .react-flow__edge-path,
+.react-flow__edge:focus-visible .react-flow__edge-path {
+  stroke: var(--kz-signal) !important;
+}
+
+.react-flow__edge:focus {
+  outline: none;
+}
+
+.react-flow__connection-path {
+  stroke: var(--kz-signal);
+  stroke-width: 1.6;
+  stroke-dasharray: 4 5;
+  animation: kz-dash 0.5s linear infinite;
+}
+
+.react-flow__selection {
+  background: var(--kz-signal-soft);
+  border: 1px solid var(--kz-signal-line);
+}
+
+.react-flow__nodesselection-rect {
+  background: var(--kz-signal-soft);
+  border: 1px solid var(--kz-signal-line);
+}
+
+.react-flow__viewport {
+  will-change: transform;
+}
+
+.react-flow__minimap {
+  background: var(--kz-panel);
+  border: 1px solid var(--kz-edge);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.react-flow__edgelabel-renderer {
+  pointer-events: none;
+}
+
+/* --- canvas background ---------------------------------------------- */
+.react-flow__background-pattern {
+  opacity: 0.9;
+}
+
+/* --- minimap -------------------------------------------------------- */
+.klyz-minimap {
+  bottom: 16px;
+  right: 16px;
+  width: 174px;
+  height: 118px;
+}
+
+.react-flow__minimap-mask {
+  fill: color-mix(in srgb, var(--kz-app) 58%, transparent);
+  stroke: var(--kz-signal-line);
+  stroke-width: 1.5;
+}
+
+.react-flow__minimap-node {
+  fill: var(--kz-raised);
+  stroke: var(--kz-strong);
+}
+
+.react-flow__minimap-node.kz-mm-idle {
+  fill: var(--kz-line);
+}
+
+.react-flow__minimap-node.kz-mm-running {
+  fill: var(--kz-signal);
+}
+
+.react-flow__minimap-node.kz-mm-ok {
+  fill: var(--kz-ok);
+}
+
+.react-flow__minimap-node.kz-mm-fail {
+  fill: var(--kz-danger);
+}
+
+.react-flow__minimap-node.kz-mm-wait {
+  fill: var(--kz-info);
+}
+
+.react-flow__minimap-node.kz-mm-skip {
+  fill: var(--kz-inset);
+}
+
+/* ==================== MARKETING RAIL ANIMATION ======================= */
+
+@keyframes kz-rail-run {
+  from {
+    top: -4px;
+  }
+  to {
+    top: 100%;
+  }
+}
+
+.kz-rail-packet {
+  animation: kz-rail-run 0.75s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes kz-packet-run-x {
+  from {
+    left: -6px;
+  }
+  to {
+    left: calc(100% + 6px);
+  }
+}
+
+/* Horizontal packet travelling an assembling edge in the story section. */
+.kz-packet-x {
+  animation: kz-packet-run-x 0.9s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes kz-caret {
+  0%,
+  45% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+
+.kz-caret {
+  animation: kz-caret 1.1s steps(1, end) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kz-rail-packet,
+  .kz-packet-x,
+  .kz-caret {
+    animation: none !important;
+    display: none;
+  }
+}
