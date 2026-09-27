@@ -7,7 +7,7 @@ import {
   finishOccurrence,
   resolvePinnedDefinition,
 } from "./triggers";
-import { assertRunnable, startPinnedRun } from "./execution-service";
+import { assertRunnable, startPinnedRun, workflowStatusFor } from "./execution-service";
 import type { Actor } from "./identity";
 
 /**
@@ -103,6 +103,21 @@ export async function runSchedulerTick(
         finishOccurrence(row.id, key, {
           status: "skipped",
           error: "The published workflow no longer has a schedule trigger.",
+        });
+        result.blocked += 1;
+        advanceNextRun(row, at);
+        continue;
+      }
+
+      /* Paused and disabled are a decision, not a failure — the same
+         "we chose not to fire" bookkeeping as the two cases above. The
+         status lives on the row: a published snapshot keeps whatever it
+         was published with. */
+      const status = workflowStatusFor(row.workspace_id, row.workflow_id);
+      if (status === "paused" || status === "disabled") {
+        finishOccurrence(row.id, key, {
+          status: "skipped",
+          error: `The workflow is ${status}.`,
         });
         result.blocked += 1;
         advanceNextRun(row, at);

@@ -25,7 +25,7 @@ import {
 } from "./identity";
 import { redact, redactMessage } from "./redact";
 import { ensureSeed } from "./seed";
-import { ensureTriggerRow } from "./triggers";
+import { declaredTriggerType, ensureTriggerRow } from "./triggers";
 
 /**
  * Execution service — the one door between the app and the engine.
@@ -81,8 +81,8 @@ export function upsertWorkflowVersion(
      and neither does the run-time colour the canvas paints on nodes:
      it would change the hash and mint a version per run. */
   const definition = stripRuntimeState(stripWebhookSecrets(rawDefinition));
-  const existing = queryOne<{ workspace_id: string }>(
-    "SELECT workspace_id FROM workflows WHERE id = ?",
+  const existing = queryOne<{ workspace_id: string; trigger_type: string }>(
+    "SELECT workspace_id, trigger_type FROM workflows WHERE id = ?",
     definition.id,
   );
   /* A workflow id owned by another workspace is indistinguishable from
@@ -90,6 +90,14 @@ export function upsertWorkflowVersion(
   if (existing && existing.workspace_id !== actor.workspaceId) {
     throw new HttpError(404, "NOT_FOUND", "That workflow does not exist.");
   }
+
+  /* The graph decides the trigger type. The optional `triggerType`
+     field is only a fallback, and for a row that already exists the
+     stored type wins over both: versioning a definition that simply
+     omitted the field must never rewrite a webhook workflow as a
+     manual one. */
+  const triggerType =
+    declaredTriggerType(definition) ?? existing?.trigger_type ?? "trigger.manual";
 
   const hash = definitionHash(definition);
   const latest = queryOne<{ id: string; version: number; hash: string }>(
@@ -119,9 +127,7 @@ export function upsertWorkflowVersion(
       definition.id,
       actor.workspaceId,
       definition.name,
-      /* A definition from an older client may omit this — a missing
-         column value must not crash the write. */
-      definition.triggerType ?? "trigger.manual",
+      triggerType,
       definition.nodes.length,
       version,
       timestamp,
@@ -134,7 +140,7 @@ export function upsertWorkflowVersion(
     sqlRun(
       "UPDATE workflows SET name = ?, trigger_type = ?, node_count = ?, latest_version = ?, updated_at = ? WHERE id = ?",
       definition.name,
-      definition.triggerType ?? "trigger.manual",
+      triggerType,
       definition.nodes.length,
       version,
       timestamp,
@@ -230,6 +236,45 @@ export function assertRunnable(definition: Workflow): void {
       issues,
     });
   }
+}
+
+/**
+ * The live status of a workflow, or `null` when the id is not in this
+ * workspace.
+ *
+ * Always read from the row, never from a definition: pausing writes the
+ * row, while a published version keeps the status it was published
+ * with — a pinned run would otherwise never see the change.
+ */
+export function workflowStatusFor(workspaceId: string, workflowId: string): string | null {
+  return (
+    queryOne<{ status: string }>(
+      "SELECT status FROM workflows WHERE id = ? AND workspace_id = ?",
+      workflowId,
+      workspaceId,
+    )?.status ?? null
+  );
+}
+
+/**
+ * Gate for starting a run against a workflow that is turned off.
+ *
+ * `status` is what the list's "Pause workflow" action and the editor's
+ * status menu write, and what the demo copy promises ("currently
+ * disabled after an authentication failure"). While it says paused or
+ * disabled nothing new starts — not a click, not a webhook, not a
+ * schedule, not a rerun. A draft still runs: publishing is a versioning
+ * step, not the on/off switch.
+ */
+export function assertWorkflowAcceptsRuns(workspaceId: string, workflowId: string): void {
+  const status = workflowStatusFor(workspaceId, workflowId);
+  if (status !== "paused" && status !== "disabled") return;
+  throw new HttpError(
+    422,
+    "WORKFLOW_INACTIVE",
+    `This workflow is ${status}. Activate it to start a new run.`,
+    { status },
+  );
 }
 
 interface StartOptions {
@@ -352,6 +397,11 @@ async function createExecutionRow(
   params: ExecutionRowParams,
 ): Promise<ExecutionDetail> {
   const { definition, versionId, version, options, source } = params;
+
+  /* Every way in — the Run button, a webhook, a schedule, a rerun —
+     funnels through here, so this is the one place that has to ask
+     whether the workflow is switched on. */
+  assertWorkflowAcceptsRuns(actor.workspaceId, definition.id);
 
   const executionId = `ex_${shortId()}`;
   const startedAt = now();

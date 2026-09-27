@@ -20,6 +20,7 @@ import {
   publishWorkflowFor,
   runWorkflowFor,
   saveDraftFor,
+  updateWorkflowFor,
 } from "./workflow-service";
 import {
   advanceNextRun,
@@ -551,6 +552,36 @@ describe("scheduler", () => {
       id,
     );
     expect(new Set(fires.map((fire) => fire.occurrence_key)).size).toBe(fires.length);
+  });
+
+  it("skips a paused or disabled workflow instead of firing it", async () => {
+    const id = "wf_trg_inactive";
+    createWorkflowFor(actor, { id, name: "Inactive", definition: scheduleWorkflow(id) });
+    publishWorkflowFor(actor, id);
+    updateWorkflowFor(actor, id, { status: "paused" });
+
+    const at = Date.now();
+    forceDue(id, at);
+    const tick = await runSchedulerTick({ at, limit: 200 });
+
+    expect(executionsFor(id)).toHaveLength(0);
+    const fire = queryOne<{ status: string; error: string | null; execution_id: string | null }>(
+      "SELECT status, error, execution_id FROM trigger_fires WHERE workflow_id = ? ORDER BY fired_at DESC LIMIT 1",
+      id,
+    );
+    expect(fire?.status).toBe("skipped");
+    expect(fire?.execution_id).toBeNull();
+    expect(fire?.error).toMatch(/paused/);
+    /* The cursor still advances: a paused workflow must not build a
+       backlog of occurrences to replay when it is switched back on. */
+    expect(getTriggerRow(id)!.next_run_at).toBeGreaterThan(at);
+
+    /* Disabled is the same decision. */
+    updateWorkflowFor(actor, id, { status: "disabled" });
+    forceDue(id, at + 60_000);
+    await runSchedulerTick({ at: at + 60_000, limit: 200 });
+    expect(executionsFor(id)).toHaveLength(0);
+    expect(tick.blocked).toBeGreaterThanOrEqual(1);
   });
 
   it("skips a schedule whose workflow was never published", async () => {

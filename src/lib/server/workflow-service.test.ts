@@ -39,6 +39,7 @@ import {
   restoreVersionFor,
   runWorkflowFor,
   saveDraftFor,
+  updateWorkflowFor,
 } from "@/lib/server/workflow-service";
 import type { Workflow } from "@/lib/workflow/types";
 
@@ -1026,5 +1027,133 @@ describe("duplication", () => {
 
     expect(pathOf(source.id)).toBe(JSON.parse(before) as string);
     expect(publishedVersionOf(source.id)).toBe(0);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* Trigger type                                                        */
+/* ------------------------------------------------------------------ */
+
+describe("trigger type", () => {
+  /** The stored column, so a downgrade shows up as a value and not a view. */
+  function triggerTypeOf(id: string): string | undefined {
+    return queryOne<{ trigger_type: string }>(
+      "SELECT trigger_type FROM workflows WHERE id = ?",
+      id,
+    )?.trigger_type;
+  }
+
+  /**
+   * A webhook graph that omits the optional top-level `triggerType`
+   * field — what a client that round-trips only `nodes`/`edges` sends.
+   */
+  function webhookGraph(id: string, message: string): Workflow {
+    const base = runnable(id, message);
+    const log = base.nodes[1];
+    if (!log) throw new Error("runnable() must produce two nodes");
+    return {
+      ...base,
+      nodes: [
+        {
+          id: "n_start",
+          type: "trigger.webhook",
+          position: { x: 0, y: 0 },
+          data: { ref: "hook", config: { path: `/hooks/${id}`, method: "POST", auth: "none" } },
+        },
+        log,
+      ],
+    };
+  }
+
+  it("records a webhook workflow from its trigger node", () => {
+    const account = createTestAccount();
+    const id = "wf_trigger_from_graph";
+    const created = createWorkflowFor(account.actor, {
+      id,
+      name: "Webhook from graph",
+      definition: webhookGraph(id, "hooked"),
+    });
+
+    expect(created.triggerType).toBe("trigger.webhook");
+    expect(triggerTypeOf(id)).toBe("trigger.webhook");
+  });
+
+  it("does not downgrade a webhook workflow to manual when the field is missing", () => {
+    const account = createTestAccount();
+    const created = createWorkflowFor(account.actor, { id: "wf_trigger_no_field" });
+    expect(triggerTypeOf(created.id)).toBe("trigger.manual");
+
+    const saved = saveDraftFor(account.actor, created.id, {
+      definition: webhookGraph(created.id, "hooked"),
+      revision: created.revision,
+    });
+    expect(saved.triggerType).toBe("trigger.webhook");
+    expect(triggerTypeOf(created.id)).toBe("trigger.webhook");
+
+    publishWorkflowFor(account.actor, created.id);
+    expect(triggerTypeOf(created.id)).toBe("trigger.webhook");
+
+    /* A later version of the same shape must not fall back to a
+       default either — publishing is where the column used to be
+       rewritten to `trigger.manual`. */
+    const view = getWorkflowFor(account.actor, created.id);
+    saveDraftFor(account.actor, created.id, {
+      definition: webhookGraph(created.id, "hooked again"),
+      revision: view.revision,
+    });
+    publishWorkflowFor(account.actor, created.id);
+    expect(triggerTypeOf(created.id)).toBe("trigger.webhook");
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* Workflow status                                                     */
+/* ------------------------------------------------------------------ */
+
+describe("workflow status", () => {
+  it("refuses new runs while the workflow is paused or disabled", async () => {
+    const account = createTestAccount();
+    const created = createWorkflowFor(account.actor, {
+      id: "wf_status_gate",
+      definition: runnable("wf_status_gate"),
+    });
+
+    /* A draft still runs — publishing versions the graph, it does not
+       switch the workflow on. */
+    const draftRun = await runWorkflowFor(account.actor, created.id, {});
+    expect(draftRun.id).toMatch(/^ex_/);
+    expect(versionsOf(created.id)).toHaveLength(1);
+
+    /* Move the draft on, so an unblocked run would mint a second
+       version. Then take the workflow off. */
+    saveDraftFor(account.actor, created.id, {
+      definition: runnable(created.id, "moved on"),
+      revision: getWorkflowFor(account.actor, created.id).revision,
+    });
+    updateWorkflowFor(account.actor, created.id, { status: "paused" });
+
+    /* "Pause workflow" is a promise the run path has to keep, and it
+       has to fail before the implicit publish would mint a version. */
+    await expect(runWorkflowFor(account.actor, created.id, {})).rejects.toMatchObject({
+      status: 422,
+      code: "WORKFLOW_INACTIVE",
+      details: { status: "paused" },
+    });
+    expect(versionsOf(created.id)).toHaveLength(1);
+
+    updateWorkflowFor(account.actor, created.id, { status: "disabled" });
+    await expect(runWorkflowFor(account.actor, created.id, {})).rejects.toMatchObject({
+      status: 422,
+      code: "WORKFLOW_INACTIVE",
+      details: { status: "disabled" },
+    });
+    expect(versionsOf(created.id)).toHaveLength(1);
+
+    /* Activating it puts the button back, and the run publishes the
+       draft the refusal was holding. */
+    updateWorkflowFor(account.actor, created.id, { status: "active" });
+    const activeRun = await runWorkflowFor(account.actor, created.id, {});
+    expect(activeRun.id).toMatch(/^ex_/);
+    expect(versionsOf(created.id)).toHaveLength(2);
   });
 });

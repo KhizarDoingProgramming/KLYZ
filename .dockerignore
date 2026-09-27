@@ -1,0 +1,41 @@
+# Keep the image build hermetic and free of local state.
+#
+# `.gitignore` does nothing for `docker build` — only this file does.
+# Without it `COPY . .` would bake the local SQLite store, the
+# credential encryption key that sits next to it, any `.env`, and the
+# build cache into a distributable image.
+
+# VCS + CI
+.git
+.gitignore
+
+# Dependencies and build output
+node_modules
+.next
+out
+build
+dist
+*.tsbuildinfo
+tsconfig.tsbuildinfo
+next-env.d.ts
+
+# Runtime state: database, encryption key, logs
+.klyz
+*.db
+*.db-wal
+*.db-shm
+*.log
+npm-debug.log*
+
+# Local environment — the template stays available, the real one never ships
+.env
+.env.*
+!.env.example
+
+# Image/compose definitions are inputs to this build, not contents of it
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+.DS_Store
+coverage

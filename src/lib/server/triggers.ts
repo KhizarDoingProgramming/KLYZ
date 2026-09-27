@@ -130,6 +130,33 @@ export function triggerTypeOf(definition: Workflow): TriggerType | null {
 }
 
 /**
+ * The trigger type a definition actually declares, read from its graph.
+ *
+ * `workflows.trigger_type` is a denormalised copy of what the canvas
+ * holds, and two writers used to fill it from the optional top-level
+ * `triggerType` field alone — so a definition that carried a
+ * `trigger.webhook` node but no field was recorded as
+ * `trigger.manual`, after which every read (the trigger card, the
+ * dashboard, a toggle) reported the wrong kind of trigger.
+ *
+ * The node is the truth: it is what the executor dispatches on, and it
+ * survives a client that round-trips only `nodes`/`edges`. The field is
+ * the fallback for a definition with no trigger node yet, and `null`
+ * means "this definition says nothing" so the caller can keep what it
+ * already has instead of inventing a default.
+ */
+export function declaredTriggerType(
+  definition: Pick<Workflow, "nodes" | "triggerType">,
+): string | null {
+  const node = definition.nodes.find(
+    (candidate) => typeof candidate.type === "string" && candidate.type.startsWith("trigger."),
+  );
+  if (node) return node.type;
+  const field = definition.triggerType;
+  return typeof field === "string" && field ? field : null;
+}
+
+/**
  * The full picture for the trigger card.
  *
  * Reads only — nothing here writes, so opening the editor on a

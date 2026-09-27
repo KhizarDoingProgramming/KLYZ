@@ -4,6 +4,7 @@ import { requirePermission } from "./authz";
 import { fromJson, now, queryAll, queryOne, run as sqlRun, toJson } from "./db";
 import {
   assertRunnable,
+  assertWorkflowAcceptsRuns,
   definitionHash,
   parseDefinition,
   publishDefinition,
@@ -13,8 +14,13 @@ import {
 import { uniqueWebhookPath } from "./webhooks";
 import { HttpError, isRecord } from "./http";
 import { ensureIdentitySeed, type Actor } from "./identity";
-import { assertManualTriggerArmed, disarmScheduleTrigger, ensureTriggerRow, syncTriggerRow } from "./triggers";
-import { getDefinition } from "@/lib/workflow/registry";
+import {
+  assertManualTriggerArmed,
+  declaredTriggerType,
+  disarmScheduleTrigger,
+  ensureTriggerRow,
+  syncTriggerRow,
+} from "./triggers";
 import {
   collectCredentialValueIssues,
   stripRuntimeState,
@@ -169,10 +175,7 @@ function publishedDefinitionOf(row: WorkflowRow): Workflow | null {
 }
 
 function triggerTypeOf(definition: Workflow): string {
-  const trigger = definition.nodes.find(
-    (node) => getDefinition(node.type)?.trigger,
-  );
-  return trigger?.type ?? definition.triggerType ?? DEFAULT_TRIGGER;
+  return declaredTriggerType(definition) ?? DEFAULT_TRIGGER;
 }
 
 /* ------------------------------------------------------------------ */
@@ -823,6 +826,10 @@ export async function runWorkflowFor(
   requirePermission(actor, "execution:run");
   const row = rowFor(actor, id);
   const definition = { ...definitionOf(row), id, name: row.name };
+
+  /* Before the implicit publish below: a paused workflow must not gain
+     a version nobody was allowed to run. */
+  assertWorkflowAcceptsRuns(actor.workspaceId, id);
 
   assertNoCredentialValues(definition);
   assertRunnable(definition);

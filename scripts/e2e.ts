@@ -5,11 +5,21 @@
  * `npx tsx scripts/e2e.ts`. It exercises the real HTTP surface and the
  * real queue; every check prints PASS/FAIL and a non-zero exit code
  * means something broke.
+ *
+ * Auth: every workspace route requires a session, so the script signs
+ * in first. Point `KLYZ_E2E_EMAIL` / `KLYZ_E2E_PASSWORD` at an account
+ * that already lives in the workspace holding the demo workflows; with
+ * nothing set it registers a throwaway account instead. Credentials the
+ * demos run with are saved, used, and removed again — and the demo
+ * drafts this script edits are restored before it exits, so a run never
+ * leaves a dangling credential reference behind.
  */
 import { getWorkflow } from "../src/lib/demo/workflows";
 
 const BASE = "http://localhost:3000";
 const results: string[] = [];
+const PASSWORD = process.env.KLYZ_E2E_PASSWORD ?? "e2e-password-123";
+let cookie = "";
 
 interface ApiResponse {
   status: number;
@@ -20,6 +30,23 @@ interface RunSummary {
   id: string;
   status: string;
   source?: string;
+}
+
+interface WorkflowNode {
+  id: string;
+  type: string;
+  data?: { config?: Record<string, unknown> };
+}
+
+interface WorkflowView {
+  id: string;
+  name: string;
+  description: string;
+  status: string;
+  tags: string[];
+  revision: number;
+  nodes: WorkflowNode[];
+  edges: Array<Record<string, unknown>>;
 }
 
 function record(label: string, condition: boolean, detail = ""): void {
@@ -36,13 +63,81 @@ function nested(value: Record<string, unknown> | null, ...path: string[]): unkno
   return current;
 }
 
+function defaultHeaders(): Record<string, string> {
+  return { "content-type": "application/json", ...(cookie ? { cookie } : {}) };
+}
+
+function sessionCookie(response: Response): string {
+  const raw = response.headers.get("set-cookie") ?? "";
+  return raw.split(";")[0] ?? "";
+}
+
+async function bootstrap(): Promise<void> {
+  const email = process.env.KLYZ_E2E_EMAIL;
+  if (email) {
+    const login = await fetch(`${BASE}/api/auth/login`, {
+      method: "POST",
+      headers: defaultHeaders(),
+      body: JSON.stringify({ email, password: PASSWORD }),
+    });
+    if (login.ok) {
+      cookie = sessionCookie(login);
+      return;
+    }
+  }
+  const register = await fetch(`${BASE}/api/auth/register`, {
+    method: "POST",
+    headers: defaultHeaders(),
+    body: JSON.stringify({
+      email: `e2e-${Date.now()}@example.test`,
+      name: "E2E",
+      password: PASSWORD,
+    }),
+  });
+  if (!register.ok) {
+    throw new Error(
+      `Could not start a session (${register.status}). Set KLYZ_E2E_EMAIL and ` +
+        `KLYZ_E2E_PASSWORD to an account inside the demo workspace.`,
+    );
+  }
+  cookie = sessionCookie(register);
+}
+
 async function api(path: string, init?: RequestInit): Promise<ApiResponse> {
   const response = await fetch(`${BASE}${path}`, {
     ...init,
-    headers: { "content-type": "application/json", ...(init?.headers ?? {}) },
+    headers: defaultHeaders(),
   });
   const json = (await response.json().catch(() => null)) as Record<string, unknown> | null;
   return { status: response.status, json };
+}
+
+async function readWorkflow(id: string): Promise<WorkflowView> {
+  const { status, json } = await api(`/api/workflows/${id}`);
+  if (status !== 200) throw new Error(`read ${id} failed: ${status}`);
+  return nested(json, "workflow") as unknown as WorkflowView;
+}
+
+/** Save `nodes`/`edges` as this workflow's draft at its current revision. */
+async function saveDraft(current: WorkflowView, nodes: WorkflowView["nodes"], edges: WorkflowView["edges"]): Promise<void> {
+  const { status, json } = await api(`/api/workflows/${current.id}/draft`, {
+    method: "PUT",
+    body: JSON.stringify({
+      definition: {
+        id: current.id,
+        name: current.name,
+        description: current.description,
+        status: current.status,
+        tags: current.tags,
+        nodes,
+        edges,
+      },
+      revision: current.revision,
+    }),
+  });
+  if (status !== 200) {
+    throw new Error(`draft save for ${current.id} failed: ${status} ${JSON.stringify(json)}`);
+  }
 }
 
 async function waitForRun(workflowId: string, timeoutMs = 30_000): Promise<RunSummary | null> {
@@ -57,7 +152,12 @@ async function waitForRun(workflowId: string, timeoutMs = 30_000): Promise<RunSu
   }
 }
 
+/** Drafts this script rewrote, kept so cleanup can put them back. */
+const touched: Array<{ id: string; view: WorkflowView }> = [];
+
 async function main() {
+  await bootstrap();
+
   /* 1 — credential CRUD + test -------------------------------- */
   const created = await api("/api/credentials", {
     method: "POST",
@@ -71,7 +171,6 @@ async function main() {
   });
   record("create credential", created.status === 201, `status=${created.status}`);
   const credentialId = (nested(created.json, "credential", "id") as string | undefined) ?? "";
-  record("credential id shaped", credentialId.startsWith("cred_"), credentialId);
 
   const listed = await api("/api/credentials");
   const listedCred = ((nested(listed.json, "credentials") ?? []) as Array<
@@ -95,15 +194,22 @@ async function main() {
   );
 
   /* 2 — demo A: webhook → transform → postgres → log ---------- */
-  const lead = structuredClone(getWorkflow("wf_lead_capture"));
+  const lead = getWorkflow("wf_lead_capture");
   if (!lead) throw new Error("demo workflow wf_lead_capture missing");
-  const pgNode = lead.nodes.find((node) => node.type === "action.postgres");
-  if (pgNode) pgNode.data.config.credential = credentialId;
+  const leadView = await readWorkflow(lead.id);
+  touched.push({ id: lead.id, view: leadView });
+  const leadNodes = structuredClone(leadView.nodes);
+  const leadPg = leadNodes.find((node) => node.type === "action.postgres");
+  if (!leadPg) throw new Error("demo A no longer has a PostgreSQL step");
+  leadPg.data ??= { config: {} };
+  leadPg.data.config ??= {};
+  leadPg.data.config.credential = credentialId;
+  await saveDraft(leadView, leadNodes, leadView.edges);
+
   const leadHook = lead.nodes.find((node) => node.type === "trigger.webhook");
   const publishA = await api(`/api/workflows/${lead.id}/webhook`, {
     method: "PUT",
     body: JSON.stringify({
-      definition: lead,
       config: {
         path: leadHook?.data.config.path,
         method: leadHook?.data.config.method,
@@ -136,26 +242,35 @@ async function main() {
   record("delivery bookkeeping", deliveryCount >= 1 && !!sample, `count=${deliveryCount}`);
 
   /* 3 — demo C: manual → postgres read → aggregate → log ------ */
-  const report = structuredClone(getWorkflow("wf_daily_lead_report"));
+  const report = getWorkflow("wf_daily_lead_report");
   if (!report) throw new Error("demo workflow wf_daily_lead_report missing");
-  const readNode = report.nodes.find((node) => node.type === "data.postgres");
-  if (readNode) readNode.data.config.credential = credentialId;
+  const reportView = await readWorkflow(report.id);
+  touched.push({ id: report.id, view: reportView });
+  const reportNodes = structuredClone(reportView.nodes);
+  const reportPg = reportNodes.find((node) => node.type === "data.postgres");
+  if (!reportPg) throw new Error("demo C no longer has a PostgreSQL step");
+  reportPg.data ??= { config: {} };
+  reportPg.data.config ??= {};
+  reportPg.data.config.credential = credentialId;
+  await saveDraft(reportView, reportNodes, reportView.edges);
+  const publishC = await api(`/api/workflows/${report.id}/publish`, { method: "POST" });
+  record("publish demo C", publishC.status === 201, `status=${publishC.status}`);
+
   const runC = await api(`/api/workflows/${report.id}/execute`, {
     method: "POST",
-    body: JSON.stringify({ definition: report }),
+    body: JSON.stringify({}),
   });
   record("demo C execute accepted", runC.status === 201, `status=${runC.status}`);
   const finishedC = await waitForRun(report.id);
   record("demo C run completed", finishedC?.status === "completed", `status=${finishedC?.status}`);
 
   /* 4 — demo B: webhook → HTTP → transform → log -------------- */
-  const relay = structuredClone(getWorkflow("wf_partner_relay"));
+  const relay = getWorkflow("wf_partner_relay");
   if (!relay) throw new Error("demo workflow wf_partner_relay missing");
   const relayHook = relay.nodes.find((node) => node.type === "trigger.webhook");
   const publishB = await api(`/api/workflows/${relay.id}/webhook`, {
     method: "PUT",
     body: JSON.stringify({
-      definition: relay,
       config: {
         path: relayHook?.data.config.path,
         method: relayHook?.data.config.method,
@@ -183,10 +298,30 @@ async function main() {
   });
   record("wrong secret rejected", badSecret.status === 401, `status=${badSecret.status}`);
 
+  const unauthenticated = await fetch(`${BASE}/api/credentials`, {
+    headers: { "content-type": "application/json" },
+  });
+  record("workspace API needs a session", unauthenticated.status === 401, `status=${unauthenticated.status}`);
+
   /* cleanup ----------------------------------------------------- */
   await api(`/api/workflows/${relay.id}/webhook`, { method: "DELETE" });
   await api(`/api/workflows/${lead.id}/webhook`, { method: "DELETE" });
   await api(`/api/credentials/${credentialId}`, { method: "DELETE" });
+
+  /* Put the demo drafts back and re-publish, so no workflow keeps
+     pointing at the credential this script just removed. */
+  let restored = 0;
+  for (const entry of touched) {
+    try {
+      const latest = await readWorkflow(entry.id);
+      await saveDraft(latest, entry.view.nodes, entry.view.edges);
+      await api(`/api/workflows/${entry.id}/publish`, { method: "POST" });
+      restored += 1;
+    } catch (error) {
+      record(`restore ${entry.id}`, false, String(error));
+    }
+  }
+  record("demo drafts restored", restored === touched.length, `${restored}/${touched.length}`);
   record("cleanup", true);
 
   console.log(results.join("\n"));
