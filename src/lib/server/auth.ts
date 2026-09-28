@@ -141,7 +141,10 @@ export function verifyPassword(password: string, stored: string | null): boolean
 
 export function findUserByEmail(email: string): UserRow | undefined {
   return queryOne<UserRow>(
-    "SELECT * FROM users WHERE email = ? COLLATE NOCASE",
+    /* Case-insensitive by construction: `idx_users_email` is built on
+       `LOWER(email)` on both dialects, so the predicate has to be
+       written the way the index is, or PostgreSQL scans the table. */
+    "SELECT * FROM users WHERE LOWER(email) = LOWER(?)",
     normaliseEmail(email),
   );
 }

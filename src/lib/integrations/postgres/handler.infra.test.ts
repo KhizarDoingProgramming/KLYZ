@@ -1,7 +1,4 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 
 /*
  * PostgreSQL integration — real database.
@@ -11,16 +8,17 @@ import { join } from "node:path";
  * silently skipping, like the queue infra suite.
  */
 
-const tmpDir = mkdtempSync(join(tmpdir(), "klyz-pg-infra-"));
-process.env.KLYZ_DB_PATH = join(tmpDir, "klyz.db");
 process.env.KLYZ_QUEUE_DRIVER = "memory";
+
+/* One private database for this file: nothing else can see its rows. */
+openTestDatabase("klyz_pg_infra");
 
 import { Pool } from "pg";
 import type { NodeRunContext } from "@/lib/engine/types";
 import type { Workflow } from "@/lib/workflow/types";
 import { defaultActor } from "@/lib/server/identity";
 import { createCredential, deleteCredential } from "@/lib/server/credentials";
-import { getDb } from "@/lib/server/db";
+import { endTestDatabase, openTestDatabase } from "@/lib/server/testing";
 import { postgresHandler } from "./handler";
 
 const actor = defaultActor();
@@ -114,12 +112,7 @@ afterAll(async () => {
   } catch {
     /* credential already removed */
   }
-  try {
-    getDb().close();
-  } catch {
-    /* already closed */
-  }
-  rmSync(tmpDir, { recursive: true, force: true });
+  await endTestDatabase();
 });
 
 describe("postgres handler against the real database", () => {

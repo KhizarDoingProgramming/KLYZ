@@ -1,16 +1,15 @@
 import { afterAll, describe, expect, it } from "vitest";
 import { createHmac } from "node:crypto";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 
-const tmpDir = mkdtempSync(join(tmpdir(), "klyz-webhook-test-"));
-process.env.KLYZ_DB_PATH = join(tmpDir, "klyz.db");
 process.env.KLYZ_QUEUE_DRIVER = "memory";
+
+/* One private database for this file: nothing else can see its rows. */
+openTestDatabase("klyz_webhooks");
 
 import { HttpError } from "./http";
 import { defaultActor } from "./identity";
-import { getDb, queryAll, queryOne } from "./db";
+import { queryAll, queryOne } from "./db";
+import { endTestDatabase, openTestDatabase } from "./testing";
 import {
   getWebhookFor,
   publishWebhook,
@@ -22,13 +21,8 @@ import type { Workflow } from "@/lib/workflow/types";
 
 const actor = defaultActor();
 
-afterAll(() => {
-  try {
-    getDb().close();
-  } catch {
-    /* already closed */
-  }
-  rmSync(tmpDir, { recursive: true, force: true });
+afterAll(async () => {
+  await endTestDatabase();
 });
 
 /* ------------------------------------------------------------------ */
@@ -75,7 +69,7 @@ function webhookWorkflow(
 
 async function runFor(workflowId: string): Promise<ExecutionDetail> {
   const row = queryOne<{ id: string }>(
-    "SELECT id FROM executions WHERE workflow_id = ? ORDER BY started_at DESC, rowid DESC LIMIT 1",
+    "SELECT id FROM executions WHERE workflow_id = ? ORDER BY COALESCE(started_at, 0) DESC, created_at DESC, id DESC LIMIT 1",
     workflowId,
   );
   if (!row) throw new Error("no execution found");

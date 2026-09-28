@@ -64,7 +64,7 @@ export function LoginForm({ redirectTo = "/dashboard" }: { redirectTo?: string }
             autoComplete="name"
             value={name}
             onChange={(event) => setName(event.target.value)}
-            placeholder="Ada Lovelace"
+            placeholder="Mustafa Khizar"
           />
         </Field>
       )}

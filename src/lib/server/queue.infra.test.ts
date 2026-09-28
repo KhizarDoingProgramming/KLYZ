@@ -1,7 +1,4 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 
 /*
  * Queue infrastructure tests — the real transport.
@@ -12,16 +9,18 @@ import { join } from "node:path";
  * They fail with instructions rather than silently skipping.
  */
 
-const tmpDir = mkdtempSync(join(tmpdir(), "klyz-queue-infra-"));
-process.env.KLYZ_DB_PATH = join(tmpDir, "klyz.db");
 process.env.KLYZ_QUEUE_DRIVER = "redis";
 process.env.KLYZ_QUEUE_NAME = `klyz-test-${Math.random().toString(36).slice(2, 10)}`;
 process.env.KLYZ_WORKER_CONCURRENCY = "2";
 process.env.KLYZ_EXECUTION_TIMEOUT_MS = "0";
 process.env.KLYZ_CANCEL_POLL_MS = "200";
 
+/* One private database for this file: nothing else can see its rows. */
+openTestDatabase("klyz_queue_infra");
+
 import { defaultActor } from "./identity";
-import { getDb, queryAll, queryOne, run as sqlRun } from "./db";
+import { queryAll, queryOne, run as sqlRun } from "./db";
+import { endTestDatabase, openTestDatabase } from "./testing";
 import {
   cancelExecutionFor,
   getExecutionDetailFor,
@@ -107,12 +106,7 @@ afterAll(async () => {
   }
   await closeQueue();
   await closeRedis();
-  try {
-    getDb().close();
-  } catch {
-    /* already closed */
-  }
-  rmSync(tmpDir, { recursive: true, force: true });
+  await endTestDatabase();
 });
 
 async function isRedisReachable(): Promise<boolean> {

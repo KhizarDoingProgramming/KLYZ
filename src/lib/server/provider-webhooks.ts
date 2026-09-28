@@ -801,9 +801,10 @@ async function startRun(
   deliveryId: string,
 ): Promise<string> {
   const deduped = exec(
-    `INSERT OR IGNORE INTO provider_deliveries
+    `INSERT INTO provider_deliveries
        (provider, workflow_id, delivery_id, received_at)
-     VALUES (?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?)
+     ON CONFLICT DO NOTHING`,
     row.provider,
     row.workflow_id,
     deliveryId,

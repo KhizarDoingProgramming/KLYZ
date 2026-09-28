@@ -1,6 +1,11 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+/* One private database for this file: nothing else can see its rows. */
+openTestDatabase("klyz_ai_service");
+
 import { HttpError } from "@/lib/server/http";
 import { defaultActor } from "@/lib/server/identity";
+import { endTestDatabase, openTestDatabase } from "@/lib/server/testing";
 import { resetAiRateLimit } from "./rate-limit";
 import { AI_CODES } from "./errors";
 import { explainWorkflowAi, generateAiPlan, refineAiPlan } from "./service";
@@ -17,6 +22,10 @@ import { NODE_DEFINITIONS } from "@/lib/workflow/registry";
 
 const actor = defaultActor();
 const fetchMock = vi.fn();
+
+afterAll(async () => {
+  await endTestDatabase();
+});
 
 function planContent(overrides: Record<string, unknown> = {}): string {
   return JSON.stringify({

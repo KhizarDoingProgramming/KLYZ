@@ -151,7 +151,7 @@ function toView(row: CredentialRow): CredentialView {
 
 export function listCredentials(actor: Actor): CredentialView[] {
   return queryAll<CredentialRow>(
-    "SELECT * FROM credentials WHERE workspace_id = ? ORDER BY name COLLATE NOCASE",
+    "SELECT * FROM credentials WHERE workspace_id = ? ORDER BY LOWER(name)",
     actor.workspaceId,
   ).map(toView);
 }

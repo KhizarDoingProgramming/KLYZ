@@ -1,13 +1,11 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 
 /* One real database for the whole file — the routes under test talk to
    it exactly as they do in production. */
-const tmpDir = mkdtempSync(join(tmpdir(), "klyz-security-"));
-process.env.KLYZ_DB_PATH = join(tmpDir, "klyz.db");
 process.env.KLYZ_QUEUE_DRIVER = "memory";
+
+/* One private database for this file: nothing else can see its rows. */
+openTestDatabase("klyz_security");
 
 import { GET as listExecutions } from "@/app/api/executions/route";
 import { GET as getExecution } from "@/app/api/executions/[id]/route";
@@ -38,7 +36,7 @@ import { resetRateLimits } from "@/lib/server/rate-limit";
 import { HttpError, errorResponse } from "@/lib/server/http";
 import { addMember, changeMemberRole } from "@/lib/server/workspaces";
 import { countOwners } from "@/lib/server/identity";
-import { createTestAccount, createWorkspaceRow, addMemberRow } from "@/lib/server/testing";
+import { endTestDatabase, openTestDatabase, createTestAccount, createWorkspaceRow, addMemberRow } from "@/lib/server/testing";
 
 /* ------------------------------------------------------------------ */
 /* Helpers                                                             */
@@ -114,8 +112,8 @@ beforeEach(() => {
   vi.unstubAllEnvs();
 });
 
-afterAll(() => {
-  rmSync(tmpDir, { recursive: true, force: true });
+afterAll(async () => {
+  await endTestDatabase();
 });
 
 /* ------------------------------------------------------------------ */

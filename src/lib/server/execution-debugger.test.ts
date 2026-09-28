@@ -1,9 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 
 /*
  * The debugger contract, end to end.
@@ -15,13 +12,15 @@ import { join } from "node:path";
  * no mocks, because the assertions *are* about what got persisted.
  */
 
-const tmpDir = mkdtempSync(join(tmpdir(), "klyz-debugger-test-"));
-process.env.KLYZ_DB_PATH = join(tmpDir, "klyz.db");
 process.env.KLYZ_QUEUE_DRIVER = "memory";
 process.env.KLYZ_HTTP_ALLOW_PRIVATE = "1";
 
+/* One private database for this file: nothing else can see its rows. */
+openTestDatabase("klyz_debugger");
+
 import { defaultActor } from "./identity";
-import { getDb, queryAll, queryOne } from "./db";
+import { queryAll, queryOne } from "./db";
+import { endTestDatabase, openTestDatabase } from "./testing";
 import { HttpError } from "./http";
 import {
   getExecutionDefinitionFor,
@@ -62,12 +61,7 @@ afterAll(async () => {
   await new Promise<void>((resolve) => {
     server.close(() => resolve());
   });
-  try {
-    getDb().close();
-  } catch {
-    /* already closed */
-  }
-  rmSync(tmpDir, { recursive: true, force: true });
+  await endTestDatabase();
 });
 
 /* ------------------------------------------------------------------ */
@@ -170,7 +164,7 @@ async function findLatestExecution(workflowId: string, timeoutMs = 5_000): Promi
   const deadline = Date.now() + timeoutMs;
   for (;;) {
     const row = queryOne<{ id: string }>(
-      "SELECT id FROM executions WHERE workflow_id = ? ORDER BY started_at DESC, rowid DESC LIMIT 1",
+      "SELECT id FROM executions WHERE workflow_id = ? ORDER BY COALESCE(started_at, 0) DESC, created_at DESC, id DESC LIMIT 1",
       workflowId,
     );
     if (row) return row.id;
@@ -181,7 +175,7 @@ async function findLatestExecution(workflowId: string, timeoutMs = 5_000): Promi
 
 function eventsOfType(executionId: string, type: string): Array<Record<string, unknown>> {
   return queryAll<{ data: string }>(
-    "SELECT data FROM execution_events WHERE execution_id = ? AND type = ? ORDER BY at, rowid",
+    "SELECT data FROM execution_events WHERE execution_id = ? AND type = ? ORDER BY at, seq",
     executionId,
     type,
   ).map((row) => JSON.parse(row.data) as Record<string, unknown>);

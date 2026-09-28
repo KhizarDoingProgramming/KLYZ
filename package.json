@@ -14,7 +14,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:unit": "vitest run --exclude \"**/*.infra.test.ts\"",
-    "infra:up": "docker compose up -d --wait redis postgres",
+    "infra:up": "docker compose up -d --wait redis postgres && node scripts/ensure-app-db.mjs",
     "infra:down": "docker compose down"
   },
   "dependencies": {

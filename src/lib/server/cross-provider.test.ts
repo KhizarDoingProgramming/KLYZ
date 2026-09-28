@@ -1,10 +1,5 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 
-const tmpDir = mkdtempSync(join(tmpdir(), "klyz-cross-provider-test-"));
-process.env.KLYZ_DB_PATH = join(tmpDir, "klyz.db");
 process.env.KLYZ_QUEUE_DRIVER = "memory";
 
 /* Provider HTTP is the seam every integration talks to the outside
@@ -43,8 +38,12 @@ vi.mock("@/lib/integrations/provider/http", async (importOriginal) => {
   };
 });
 
+/* One private database for this file: nothing else can see its rows. */
+openTestDatabase("klyz_cross_provider");
+
 import { defaultActor } from "./identity";
-import { getDb, queryOne } from "./db";
+import { queryOne } from "./db";
+import { endTestDatabase, openTestDatabase } from "./testing";
 import { upsertOAuthCredential } from "./credentials";
 import { startWorkflowRun } from "./execution-service";
 import type { ExecutionDetail } from "@/lib/execution/types";
@@ -54,13 +53,8 @@ import { clearChannelCache } from "@/lib/integrations/slack";
 
 const actor = defaultActor();
 
-afterAll(() => {
-  try {
-    getDb().close();
-  } catch {
-    /* already closed */
-  }
-  rmSync(tmpDir, { recursive: true, force: true });
+afterAll(async () => {
+  await endTestDatabase();
 });
 
 beforeEach(() => {
@@ -234,7 +228,7 @@ async function run(definition: Workflow, options?: Record<string, unknown>): Pro
   await startWorkflowRun(actor, { definition, source: "manual", options: options ?? {} });
 
   const row = queryOne<{ id: string }>(
-    "SELECT id FROM executions WHERE workflow_id = ? ORDER BY started_at DESC, rowid DESC LIMIT 1",
+    "SELECT id FROM executions WHERE workflow_id = ? ORDER BY COALESCE(started_at, 0) DESC, created_at DESC, id DESC LIMIT 1",
     definition.id,
   );
   if (!row) throw new Error("no execution was created");

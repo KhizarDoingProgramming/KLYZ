@@ -133,10 +133,11 @@ function seedTriggerRow(workflow: Workflow, timestamp: number): void {
   const timezone = type === "schedule" ? timezoneFromConfig(config) : null;
 
   run(
-    `INSERT OR IGNORE INTO workflow_triggers
+    `INSERT INTO workflow_triggers
        (id, workflow_id, workspace_id, type, enabled, config, schedule_cron,
         schedule_timezone, next_run_at, created_at, updated_at)
-     VALUES (?, ?, ?, ?, 1, ?, ?, ?, NULL, ?, ?)`,
+     VALUES (?, ?, ?, ?, 1, ?, ?, ?, NULL, ?, ?)
+     ON CONFLICT DO NOTHING`,
     `trg_${workflow.id.replace(/^wf_/, "")}`,
     workflow.id,
     SEED_WORKSPACE,
@@ -236,7 +237,8 @@ export function ensureSeed(): void {
   seedWorkflows(timestamp);
   seedRuns(timestamp);
   run(
-    "INSERT OR REPLACE INTO app_meta (key, value) VALUES ('seeded', ?)",
+    "INSERT INTO app_meta (key, value) VALUES ('seeded', ?) " +
+      "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
     new Date(timestamp).toISOString(),
   );
 }

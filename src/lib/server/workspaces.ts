@@ -270,7 +270,7 @@ export function addMember(actor: ActorLike, email: string, role: string): Member
 
   const normalised = email.trim().toLowerCase();
   const user = queryOne<{ id: string; name: string; email: string }>(
-    "SELECT id, name, email FROM users WHERE email = ? COLLATE NOCASE",
+    "SELECT id, name, email FROM users WHERE LOWER(email) = LOWER(?)",
     normalised,
   );
   if (!user) {
@@ -470,7 +470,7 @@ export function ensureWorkspaceFor(userId: string): string {
   );
   if ((adopted?.total ?? 0) === 0) {
     sqlRun(
-      "INSERT OR IGNORE INTO workspace_members (workspace_id, user_id, role, created_at) VALUES ('ws_default', ?, 'owner', ?)",
+      "INSERT INTO workspace_members (workspace_id, user_id, role, created_at) VALUES ('ws_default', ?, 'owner', ?) ON CONFLICT DO NOTHING",
       userId,
       now(),
     );

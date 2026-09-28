@@ -1,12 +1,9 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 /* One real database for the whole file — the routes under test talk to
    it exactly as they do in production. */
-const tmpDir = mkdtempSync(join(tmpdir(), "klyz-workflows-"));
-process.env.KLYZ_DB_PATH = join(tmpDir, "klyz.db");
 process.env.KLYZ_QUEUE_DRIVER = "memory";
 
 import {
@@ -18,6 +15,9 @@ import {
   GET as getWorkflowRoute,
   PATCH as patchWorkflowRoute,
 } from "@/app/api/workflows/[id]/route";
+/* One private database for this file: nothing else can see its rows. */
+openTestDatabase("klyz_workflows");
+
 import { PUT as saveDraftRoute } from "@/app/api/workflows/[id]/draft/route";
 import { POST as publishRoute } from "@/app/api/workflows/[id]/publish/route";
 import {
@@ -28,7 +28,8 @@ import { POST as executeRoute } from "@/app/api/workflows/[id]/execute/route";
 import { SCHEMA_VERSION, queryAll, queryOne, run } from "@/lib/server/db";
 import { resetRateLimits } from "@/lib/server/rate-limit";
 import { HttpError } from "@/lib/server/http";
-import { createTestAccount, type TestAccount } from "@/lib/server/testing";
+import { endTestDatabase, openTestDatabase, createTestAccount, type TestAccount } from "@/lib/server/testing";
+import { claimOccurrence } from "@/lib/server/triggers";
 import {
   archiveWorkflowFor,
   createWorkflowFor,
@@ -147,8 +148,8 @@ beforeEach(() => {
   vi.unstubAllEnvs();
 });
 
-afterAll(() => {
-  rmSync(tmpDir, { recursive: true, force: true });
+afterAll(async () => {
+  await endTestDatabase();
 });
 
 /* ------------------------------------------------------------------ */
@@ -883,23 +884,6 @@ describe("schema migration", () => {
   });
 
   it("created the trigger tables with their idempotency key", () => {
-    const columns = queryAll<{ name: string }>(
-      "PRAGMA table_info(trigger_fires)",
-    ).map((column) => column.name);
-    expect(columns).toContain("trigger_id");
-    expect(columns).toContain("occurrence_key");
-    expect(columns).toContain("execution_id");
-
-    /* The claim barrier: one row per (trigger, occurrence), ever. */
-    const primary = queryAll<{ name: string; origin: string }>(
-      "PRAGMA index_list(trigger_fires)",
-    ).find((index) => index.origin === "pk");
-    expect(primary, "trigger_fires needs a primary key").toBeTruthy();
-    const keyColumns = queryAll<{ name: string }>(
-      `PRAGMA index_info(${primary!.name})`,
-    ).map((column) => column.name);
-    expect(keyColumns).toEqual(["trigger_id", "occurrence_key"]);
-
     /* Backfilled from the seed: a seeded schedule already has a row,
        so it can fire without anyone opening its card first. */
     const seeded = queryOne<{ type: string; enabled: number; schedule_cron: string | null }>(
@@ -909,6 +893,36 @@ describe("schema migration", () => {
     expect(seeded?.type).toBe("schedule");
     expect(seeded?.enabled).toBe(1);
     expect(seeded?.schedule_cron).toBeTruthy();
+
+    const trigger = queryOne<Parameters<typeof claimOccurrence>[0]>(
+      "SELECT * FROM workflow_triggers WHERE workflow_id = ?",
+      "wf_nightly_sync",
+    );
+    expect(trigger, "the seeded trigger row").toBeTruthy();
+
+    /* The claim barrier: one row per (trigger, occurrence), ever. Assert
+       it by behaviour — two claims for the same key, one winner — rather
+       than by index introspection, which has no portable form: SQLite
+       answers it through `PRAGMA` and PostgreSQL through `pg_index`. */
+    const occurrence = `probe_${trigger!.id}_${Date.now()}`;
+    expect(claimOccurrence(trigger!, occurrence)).toBe(true);
+    expect(claimOccurrence(trigger!, occurrence)).toBe(false);
+
+    /* Naming the columns in the projection proves all three exist; a
+       missing one fails the statement instead of passing an assertion. */
+    const claimed = queryOne<{
+      trigger_id: string;
+      occurrence_key: string;
+      execution_id: string | null;
+    }>(
+      "SELECT trigger_id, occurrence_key, execution_id FROM trigger_fires " +
+        "WHERE occurrence_key = ?",
+      occurrence,
+    );
+    expect(claimed?.trigger_id).toBe(trigger!.id);
+    expect(claimed?.occurrence_key).toBe(occurrence);
+    expect(claimed?.execution_id).toBeNull();
+    run("DELETE FROM trigger_fires WHERE occurrence_key = ?", occurrence);
   });
 
   it("seeds a draft and a published pointer, not a bare definition", () => {

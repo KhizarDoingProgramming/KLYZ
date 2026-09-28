@@ -1,16 +1,14 @@
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 
 /* Same seam as the other server tests: a real database, a mocked model. */
-const tmpDir = mkdtempSync(join(tmpdir(), "klyz-ai-route-"));
-process.env.KLYZ_DB_PATH = join(tmpDir, "klyz.db");
 process.env.KLYZ_QUEUE_DRIVER = "memory";
+
+/* One private database for this file: nothing else can see its rows. */
+openTestDatabase("klyz_ai_route");
 
 import { POST } from "./route";
 import { queryAll, queryOne } from "@/lib/server/db";
-import { createTestAccount } from "@/lib/server/testing";
+import { endTestDatabase, openTestDatabase, createTestAccount } from "@/lib/server/testing";
 import { validateWorkflow } from "@/lib/workflow/validation";
 import type { Workflow } from "@/lib/workflow/types";
 
@@ -66,8 +64,8 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
-afterAll(() => {
-  rmSync(tmpDir, { recursive: true, force: true });
+afterAll(async () => {
+  await endTestDatabase();
 });
 
 describe("POST /api/ai/workflows/generate", () => {

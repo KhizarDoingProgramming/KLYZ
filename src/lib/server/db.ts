@@ -1,17 +1,81 @@
 import { randomBytes } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { DatabaseSync, type StatementSync } from "node:sqlite";
+import { DatabaseSync } from "node:sqlite";
+
+import { disposePgBridge, pgQuery } from "./pg/bridge";
+import { MIGRATIONS_PG } from "./pg/migrations";
+import { toPostgres } from "./pg/placeholders";
 
 /**
- * SQLite persistence for executions.
+ * Persistence for executions.
  *
- * `node:sqlite` is built into Node 22 — no native module, no external
- * service. The database is the durable truth for executions, steps and
- * the event log; SSE and the editor are views over it.
+ * The same synchronous facade speaks two dialects. `node:sqlite` opens a
+ * local file and needs no external service; PostgreSQL is what the web
+ * process and the queue worker share, reached through a worker thread
+ * that keeps the API synchronous. Which one is used is decided once per
+ * process from `KLYZ_DB_DRIVER`, and never per call.
+ *
+ * The call sites — `queryAll`, `queryOne`, `run`, `exec` — are identical
+ * for both: 140 of them sit in synchronous functions, and none of them
+ * changed when the storage engine did.
  */
 
 export const SCHEMA_VERSION = 7;
+
+/** The dialect this process talks to. */
+export type DatabaseDriver = "sqlite" | "postgres";
+
+let resolvedDriver: DatabaseDriver | null = null;
+
+/**
+ * Pick the dialect.
+ *
+ * Explicit `KLYZ_DB_DRIVER` wins. Otherwise a configured connection URL
+ * means PostgreSQL and an absent one means the legacy file — which keeps
+ * local development working with nothing set. Production is the exception:
+ * falling back to a single-process file there would split the data
+ * silently between the web process and the worker, so a missing URL is a
+ * hard error instead.
+ */
+function driver(): DatabaseDriver {
+  if (resolvedDriver) return resolvedDriver;
+
+  const explicit = process.env.KLYZ_DB_DRIVER?.trim().toLowerCase();
+  const hasUrl = Boolean(process.env.KLYZ_DATABASE_URL);
+
+  let chosen: DatabaseDriver;
+  if (explicit === "sqlite" || explicit === "postgres") {
+    chosen = explicit;
+  } else if (explicit) {
+    throw new Error(
+      `KLYZ_DB_DRIVER must be "postgres" or "sqlite", got ${JSON.stringify(explicit)}`,
+    );
+  } else if (hasUrl) {
+    chosen = "postgres";
+  } else if (process.env.NODE_ENV === "production") {
+    throw new Error(
+      "KLYZ_DATABASE_URL is not set. Production requires the shared PostgreSQL database; " +
+        "setting KLYZ_DB_DRIVER=sqlite would give this process a private store that the " +
+        "worker process never sees.",
+    );
+  } else {
+    chosen = "sqlite";
+  }
+
+  if (chosen === "postgres" && !hasUrl) {
+    throw new Error("KLYZ_DB_DRIVER=postgres requires KLYZ_DATABASE_URL");
+  }
+
+  resolvedDriver = chosen;
+  return chosen;
+}
+
+/** Test seam: force a dialect without touching process.env. */
+export function setDatabaseDriver(next: DatabaseDriver): void {
+  resolvedDriver = next;
+}
+
 
 const MIGRATIONS: Array<{ version: number; sql: string }> = [
   {
@@ -456,9 +520,24 @@ const MIGRATIONS: Array<{ version: number; sql: string }> = [
   },
 ];
 
+/**
+ * The driver-neutral shape of a prepared statement.
+ *
+ * `node:sqlite`'s `StatementSync` and the PostgreSQL bridge both reduce
+ * to these three operations; wrapping them keeps the 140 call sites
+ * written against `all`/`get`/`run` unchanged across dialects.
+ */
+interface Statement {
+  all(...params: SqlValue[]): unknown[];
+  get(...params: SqlValue[]): unknown;
+  run(...params: SqlValue[]): { changes: number };
+}
+
 interface DbHandle {
-  db: DatabaseSync;
-  statements: Map<string, StatementSync>;
+  driver: DatabaseDriver;
+  /** The live SQLite connection; absent when the dialect is PostgreSQL. */
+  sqlite?: DatabaseSync;
+  statements: Map<string, Statement>;
 }
 
 function resolveDbPath(): string {
@@ -499,25 +578,26 @@ interface BackfillNode {
  * (GitHub/Gmail/Slack) are skipped — those keep the endpoint card they
  * already had and are not part of the manual/webhook/schedule set.
  */
-function backfillTriggers(db: DatabaseSync): void {
+function backfillTriggers(handle: DbHandle): void {
   const at = Date.now();
-  const rows = db
-    .prepare(
-      `SELECT w.id, w.workspace_id, w.trigger_type, w.draft
-         FROM workflows w
-         LEFT JOIN workflow_triggers t ON t.workflow_id = w.id
-        WHERE t.id IS NULL`,
-    )
-    .all() as unknown as BackfillWorkflow[];
+  const rows = allOn<BackfillWorkflow>(
+    handle,
+    `SELECT w.id, w.workspace_id, w.trigger_type, w.draft
+       FROM workflows w
+       LEFT JOIN workflow_triggers t ON t.workflow_id = w.id
+      WHERE t.id IS NULL`,
+  );
   if (rows.length === 0) return;
 
-  const insert = db.prepare(
+  const insert = prepareOn(
+    handle,
     `INSERT INTO workflow_triggers
        (id, workflow_id, workspace_id, type, enabled, config, schedule_cron,
         schedule_timezone, next_run_at, created_at, updated_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)`,
   );
-  const webhookEnabled = db.prepare(
+  const webhookEnabled = prepareOn(
+    handle,
     "SELECT enabled FROM webhooks WHERE workflow_id = ? LIMIT 1",
   );
 
@@ -585,6 +665,10 @@ function createHashId(): string {
 }
 
 function open(): DbHandle {
+  return driver() === "postgres" ? openPostgres() : openSqlite();
+}
+
+function openSqlite(): DbHandle {
   const path = resolveDbPath();
   mkdirSync(dirname(path), { recursive: true });
   const db = new DatabaseSync(path);
@@ -595,16 +679,15 @@ function open(): DbHandle {
      SQLITE_BUSY the instant it tries. */
   db.exec("PRAGMA busy_timeout = 5000;");
 
+  const opened: DbHandle = { driver: "sqlite", sqlite: db, statements: new Map() };
+
   /* Apply only the migrations newer than what this database has. */
-  let current = 0;
-  try {
+  const current = schemaVersion(() => {
     const row = db
       .prepare("SELECT value FROM app_meta WHERE key = 'schema_version'")
       .get() as { value?: string } | undefined;
-    current = Number(row?.value ?? 0) || 0;
-  } catch {
-    current = 0; /* app_meta does not exist yet — brand-new database */
-  }
+    return Number(row?.value ?? 0) || 0;
+  });
   for (const migration of MIGRATIONS) {
     if (migration.version <= current) continue;
     db.exec(migration.sql);
@@ -616,14 +699,61 @@ function open(): DbHandle {
   /* Migration 6 created the trigger tables — give every workflow that
      already exists one, so nothing that fired yesterday stops firing
      today. Runs exactly once, at the moment the tables appear. */
-  if (current < 6) backfillTriggers(db);
+  if (current < 6) backfillTriggers(opened);
 
-  const statements = new Map<string, StatementSync>();
-  const handle: DbHandle = { db, statements };
   db.prepare(
     "INSERT OR REPLACE INTO app_meta (key, value) VALUES ('schema_version', ?)",
   ).run(String(SCHEMA_VERSION));
-  return handle;
+  return opened;
+}
+
+/**
+ * PostgreSQL startup: the same seven migrations, the same
+ * `app_meta.schema_version` key, so a database can be inspected for its
+ * schema version with one query regardless of which dialect wrote it.
+ */
+function openPostgres(): DbHandle {
+  const opened: DbHandle = { driver: "postgres", statements: new Map() };
+
+  const current = schemaVersion(() => {
+    const row = queryOneOn<{ value?: string }>(
+      opened,
+      "SELECT value FROM app_meta WHERE key = 'schema_version'",
+    );
+    return Number(row?.value ?? 0) || 0;
+  });
+
+  for (const migration of MIGRATIONS_PG) {
+    if (migration.version <= current) continue;
+    /* The whole migration goes as one statement with no bind parameters,
+       which is the only shape PostgreSQL runs as a single implicit
+       transaction — it applies completely or not at all. */
+    pgQuery(migration.sql, [], false);
+    writeSchemaVersion(opened, migration.version);
+  }
+
+  if (current < 6) backfillTriggers(opened);
+
+  writeSchemaVersion(opened, SCHEMA_VERSION);
+  return opened;
+}
+
+/** Read `app_meta.schema_version`, treating a missing table as "empty". */
+function schemaVersion(read: () => number): number {
+  try {
+    return read();
+  } catch {
+    return 0; /* app_meta does not exist yet — brand-new database */
+  }
+}
+
+function writeSchemaVersion(opened: DbHandle, version: number): void {
+  runOn(
+    opened,
+    "INSERT INTO app_meta (key, value) VALUES ('schema_version', $1) " +
+      "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
+    String(version),
+  );
 }
 
 function handle(): DbHandle {
@@ -632,37 +762,101 @@ function handle(): DbHandle {
   return global.__klyzDb;
 }
 
+/**
+ * The raw SQLite connection.
+ *
+ * Test-only, and SQLite-only by construction: there is no `DatabaseSync`
+ * to hand back when the dialect is PostgreSQL, which is exactly why the
+ * closing routine below is the supported way to release the handle.
+ */
 export function getDb(): DatabaseSync {
-  return handle().db;
+  const opened = handle();
+  if (!opened.sqlite) {
+    throw new Error(
+      "getDb() exposes the SQLite connection only; the PostgreSQL dialect has no " +
+        "equivalent — use closeDatabase() to release the handle.",
+    );
+  }
+  return opened.sqlite;
 }
 
-function prepare(sql: string): StatementSync {
-  const { db, statements } = handle();
-  let statement = statements.get(sql);
-  if (!statement) {
-    statement = db.prepare(sql);
-    statements.set(sql, statement);
-  }
+/** Drop the cached handle so the next query opens a fresh one. */
+export async function closeDatabase(): Promise<void> {
+  const global = globalThis as typeof globalThis & { __klyzDb?: DbHandle };
+  const opened = global.__klyzDb;
+  global.__klyzDb = undefined;
+  /* Re-resolve the dialect on the next open rather than remembering the
+     one this handle was built with — tests switch dialects. */
+  resolvedDriver = null;
+  if (!opened) return;
+  opened.statements.clear();
+  if (opened.sqlite) opened.sqlite.close();
+  await disposePgBridge();
+}
+
+function prepareOn(opened: DbHandle, sql: string): Statement {
+  const cached = opened.statements.get(sql);
+  if (cached) return cached;
+
+  const statement =
+    opened.driver === "postgres" ? postgresStatement(sql) : sqliteStatement(opened, sql);
+  opened.statements.set(sql, statement);
   return statement;
+}
+
+function sqliteStatement(opened: DbHandle, sql: string): Statement {
+  const statement = (opened.sqlite as DatabaseSync).prepare(sql);
+  return {
+    all: (...params) => statement.all(...params) as unknown[],
+    get: (...params) => statement.get(...params) as unknown,
+    run: (...params) => ({ changes: Number(statement.run(...params).changes) }),
+  };
+}
+
+function postgresStatement(sql: string): Statement {
+  /* Translate once, at prepare time — the statement cache is keyed on
+     the original SQLite text, so every call site keeps its `?`s. */
+  const translated = toPostgres(sql);
+  return {
+    all: (...params) => pgQuery(translated, params, true).rows,
+    get: (...params) => pgQuery(translated, params, true).rows[0],
+    run: (...params) => ({ changes: pgQuery(translated, params, false).rowCount }),
+  };
+}
+
+function allOn<T>(opened: DbHandle, sql: string, ...params: SqlValue[]): T[] {
+  return prepareOn(opened, sql).all(...params) as T[];
+}
+
+function queryOneOn<T>(
+  opened: DbHandle,
+  sql: string,
+  ...params: SqlValue[]
+): T | undefined {
+  return prepareOn(opened, sql).get(...params) as T | undefined;
+}
+
+function runOn(opened: DbHandle, sql: string, ...params: SqlValue[]): void {
+  prepareOn(opened, sql).run(...params);
 }
 
 export type SqlValue = string | number | null;
 
 export function queryAll<T>(sql: string, ...params: SqlValue[]): T[] {
-  return prepare(sql).all(...params) as T[];
+  return allOn(handle(), sql, ...params);
 }
 
 export function queryOne<T>(sql: string, ...params: SqlValue[]): T | undefined {
-  return prepare(sql).get(...params) as T | undefined;
+  return queryOneOn(handle(), sql, ...params);
 }
 
 export function run(sql: string, ...params: SqlValue[]): void {
-  prepare(sql).run(...params);
+  runOn(handle(), sql, ...params);
 }
 
 /** Run a statement and report how many rows it changed (claim guards). */
 export function exec(sql: string, ...params: SqlValue[]): number {
-  return Number(prepare(sql).run(...params).changes);
+  return prepareOn(handle(), sql).run(...params).changes;
 }
 
 export function now(): number {

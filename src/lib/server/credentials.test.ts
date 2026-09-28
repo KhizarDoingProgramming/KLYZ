@@ -1,15 +1,14 @@
 import { afterAll, describe, expect, it } from "vitest";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 
-const tmpDir = mkdtempSync(join(tmpdir(), "klyz-cred-test-"));
-process.env.KLYZ_DB_PATH = join(tmpDir, "klyz.db");
 process.env.KLYZ_CREDENTIAL_KEY = "ab".repeat(32);
+
+/* One private database for this file: nothing else can see its rows. */
+openTestDatabase("klyz_credentials");
 
 import { HttpError } from "./http";
 import { defaultActor } from "./identity";
-import { getDb, queryOne } from "./db";
+import { queryOne } from "./db";
+import { endTestDatabase, openTestDatabase } from "./testing";
 import {
   createCredential,
   decryptCredentialFields,
@@ -23,13 +22,8 @@ import { testCredential } from "./credential-test";
 
 const actor = defaultActor();
 
-afterAll(() => {
-  try {
-    getDb().close();
-  } catch {
-    /* already closed */
-  }
-  rmSync(tmpDir, { recursive: true, force: true });
+afterAll(async () => {
+  await endTestDatabase();
 });
 
 describe("credentials", () => {

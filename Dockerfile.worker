@@ -1,0 +1,106 @@
+# syntax=docker/dockerfile:1
+#
+# KLYZ BullMQ worker image (Deplexo).
+#
+# The worker is a plain Node process that never serves HTTP, so this
+# image deliberately skips `next build`. Its import graph is 110 source
+# files with zero `next` modules and no reads of `.next/` — the only
+# external packages it reaches are bullmq, ioredis, cron-parser and pg.
+# The web server keeps its own image in ./Dockerfile.
+
+FROM node:22-bookworm-slim AS deps
+WORKDIR /app
+COPY package.json package-lock.json ./
+
+# Production dependencies only, resolved strictly from the lockfile.
+RUN npm ci --omit=dev
+
+# `tsx` executes the TypeScript entry point but is declared a
+# devDependency, so --omit=dev would skip it (and asking npm to add it
+# to this tree would reify the whole devDependency set). It therefore
+# gets its own prefix, at the exact version the lockfile resolved.
+RUN npm install --prefix /opt/tsx --no-save \
+      tsx@$(node -p "require('./package-lock.json').packages['node_modules/tsx'].version")
+
+# Keep only the packages the worker actually depends on, computed from
+# this lockfile — everything else (next, @next/swc, sharp, lucide-react,
+# react, vite, tailwind, eslint …) is web-server or tooling weight that
+# the worker never imports.
+RUN node <<'EOF'
+const fs = require("node:fs");
+const lock = JSON.parse(fs.readFileSync("package-lock.json", "utf8"));
+const pkgs = lock.packages;
+const ROOTS = ["bullmq", "ioredis", "cron-parser", "pg"];
+
+const resolve = (parent, name) => {
+  const nested = (parent ? parent + "/" : "") + "node_modules/" + name;
+  if (pkgs[nested]) return nested;
+  const top = "node_modules/" + name;
+  if (pkgs[top]) return top;
+  return null;
+};
+
+const seen = new Set();
+const stack = ROOTS.map((r) => resolve("", r)).filter(Boolean);
+while (stack.length) {
+  const p = stack.pop();
+  if (!p || seen.has(p)) continue;
+  seen.add(p);
+  const entry = pkgs[p] || {};
+  const names = Object.keys(entry).filter(
+    (k) => k === "dependencies" || k === "optionalDependencies",
+  );
+  for (const k of names) {
+    for (const name of Object.keys(entry[k])) {
+      const r = resolve(p, name);
+      if (r) stack.push(r);
+    }
+  }
+}
+
+const keep = new Set();
+for (const p of seen) {
+  const top = p.split("node_modules/")[1];
+  if (top) keep.add(top.replace(/\/$/, ""));
+}
+
+let kept = 0;
+let dropped = 0;
+const drop = (path) => {
+  fs.rmSync(path, { recursive: true, force: true });
+  dropped += 1;
+};
+
+for (const entry of fs.readdirSync("node_modules")) {
+  if (entry.startsWith(".")) continue;
+  if (entry.startsWith("@")) {
+    const dir = "node_modules/" + entry;
+    for (const sub of fs.readdirSync(dir)) {
+      if (keep.has(entry + "/" + sub)) kept += 1;
+      else drop(dir + "/" + sub);
+    }
+    if (fs.readdirSync(dir).length === 0) fs.rmdirSync(dir);
+    continue;
+  }
+  if (keep.has(entry)) kept += 1;
+  else drop("node_modules/" + entry);
+}
+console.log("prune: kept " + kept + " packages, dropped " + dropped);
+EOF
+
+FROM node:22-bookworm-slim AS runner
+WORKDIR /app
+ENV NODE_ENV=production
+
+# Readable/writable only where the worker writes: .klyz/ holds the SQLite
+# store, its WAL files and the dev-only credential key fallback.
+COPY --from=deps --chown=node:node /app/node_modules ./node_modules
+COPY --from=deps --chown=node:node /opt/tsx /opt/tsx
+COPY --chown=node:node package.json tsconfig.json ./
+COPY --chown=node:node src ./src
+RUN ln -s /opt/tsx/node_modules/.bin/tsx /usr/local/bin/tsx \
+ && mkdir -p /app/.klyz && chown node:node /app/.klyz
+
+USER node
+
+CMD ["npm", "run", "worker"]

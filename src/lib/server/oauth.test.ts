@@ -1,15 +1,14 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 
-const tmpDir = mkdtempSync(join(tmpdir(), "klyz-oauth-test-"));
-process.env.KLYZ_DB_PATH = join(tmpDir, "klyz.db");
 process.env.KLYZ_QUEUE_DRIVER = "memory";
+
+/* One private database for this file: nothing else can see its rows. */
+openTestDatabase("klyz_oauth");
 
 import { HttpError } from "./http";
 import { defaultActor } from "./identity";
-import { getDb, queryAll, queryOne, run as sqlRun } from "./db";
+import { queryAll, queryOne, run as sqlRun } from "./db";
+import { endTestDatabase, openTestDatabase } from "./testing";
 import { completeConnect, pruneStates, startConnect } from "./oauth";
 
 const actor = defaultActor();
@@ -28,14 +27,9 @@ function configureGithub(): void {
   process.env.GITHUB_CLIENT_SECRET = "test_secret";
 }
 
-afterAll(() => {
+afterAll(async () => {
   clearEnv();
-  try {
-    getDb().close();
-  } catch {
-    /* already closed */
-  }
-  rmSync(tmpDir, { recursive: true, force: true });
+  await endTestDatabase();
 });
 
 beforeEach(() => {

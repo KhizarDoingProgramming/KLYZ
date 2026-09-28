@@ -1,18 +1,16 @@
-import { beforeEach, describe, expect, it } from "vitest";
-import { mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { afterAll, beforeEach, describe, expect, it } from "vitest";
 
-const tmpDir = mkdtempSync(join(tmpdir(), "klyz-portability-"));
-process.env.KLYZ_DB_PATH = join(tmpDir, "klyz.db");
 process.env.KLYZ_QUEUE_DRIVER = "memory";
+
+/* One private database for this file: nothing else can see its rows. */
+openTestDatabase("klyz_portability");
 
 import { GET as exportRoute } from "@/app/api/workflows/[id]/export/route";
 import { POST as importRoute } from "@/app/api/workflows/import/route";
 import { createCredential } from "@/lib/server/credentials";
 import { queryAll, queryOne } from "@/lib/server/db";
 import { resetRateLimits } from "@/lib/server/rate-limit";
-import { createTestAccount, type TestAccount } from "@/lib/server/testing";
+import { endTestDatabase, openTestDatabase, createTestAccount, type TestAccount } from "@/lib/server/testing";
 import { exportWorkflowFor } from "@/lib/server/portability";
 import {
   createWorkflowFor,
@@ -494,3 +492,7 @@ describe("workflow import", () => {
     );
   });
 });
+
+afterAll(async () => {
+  await endTestDatabase();
+}, 60_000);

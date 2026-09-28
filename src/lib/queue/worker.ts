@@ -112,7 +112,8 @@ export async function runSweep(): Promise<SweepResult> {
 function writeHeartbeat(): void {
   try {
     sqlRun(
-      "INSERT OR REPLACE INTO app_meta (key, value) VALUES ('worker_heartbeat', ?)",
+      "INSERT INTO app_meta (key, value) VALUES ('worker_heartbeat', ?) " +
+        "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
       JSON.stringify({
         pid: process.pid,
         at: now(),

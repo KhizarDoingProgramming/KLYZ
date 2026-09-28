@@ -1,11 +1,9 @@
-import { beforeEach, describe, expect, it } from "vitest";
-import { mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { afterAll, beforeEach, describe, expect, it } from "vitest";
 
-const tmpDir = mkdtempSync(join(tmpdir(), "klyz-templates-"));
-process.env.KLYZ_DB_PATH = join(tmpDir, "klyz.db");
 process.env.KLYZ_QUEUE_DRIVER = "memory";
+
+/* One private database for this file: nothing else can see its rows. */
+openTestDatabase("klyz_templates");
 
 import { GET as listRoute, POST as createRoute } from "@/app/api/templates/route";
 import {
@@ -22,7 +20,7 @@ import {
   resetSystemTemplateCache,
 } from "@/lib/server/templates";
 import { SYSTEM_TEMPLATES } from "@/lib/server/template-library";
-import { createTestAccount } from "@/lib/server/testing";
+import { endTestDatabase, openTestDatabase, createTestAccount } from "@/lib/server/testing";
 import { createWorkflowFor, getWorkflowFor } from "@/lib/server/workflow-service";
 import { portableFromWorkflow, type PortableWorkflow } from "@/lib/workflow/portable";
 import type { Workflow } from "@/lib/workflow/types";
@@ -623,3 +621,7 @@ describe("creating a workflow from a template", () => {
       .toBeUndefined();
   });
 });
+
+afterAll(async () => {
+  await endTestDatabase();
+}, 60_000);

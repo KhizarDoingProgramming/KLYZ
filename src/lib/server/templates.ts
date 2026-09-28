@@ -90,7 +90,7 @@ let systemTemplatesChecked = false;
  * Insert the built-in library once per process.
  *
  * A single existence probe first, so the normal case costs one indexed
- * read instead of five writes; `INSERT OR IGNORE` keeps two processes
+ * read instead of five writes; `ON CONFLICT DO NOTHING` keeps two processes
  * racing on first boot idempotent.
  */
 export function ensureSystemTemplates(force = false): void {
@@ -106,11 +106,12 @@ export function ensureSystemTemplates(force = false): void {
   for (const template of SYSTEM_TEMPLATES) {
     const { portable } = portableFromWorkflow(template.definition);
     sqlRun(
-      `INSERT OR IGNORE INTO templates
+      `INSERT INTO templates
          (id, workspace_id, name, description, category, icon, definition, node_count,
           trigger_type, integrations, required_credentials, system, created_by,
           created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, NULL, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, NULL, ?, ?)
+       ON CONFLICT DO NOTHING`,
       template.id,
       SYSTEM_WORKSPACE,
       template.name,

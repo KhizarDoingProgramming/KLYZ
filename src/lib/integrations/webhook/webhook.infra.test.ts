@@ -1,7 +1,4 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 
 /*
  * Webhook flow — real transport.
@@ -11,12 +8,13 @@ import { join } from "node:path";
  * with setup instructions when it is not reachable.
  */
 
-const tmpDir = mkdtempSync(join(tmpdir(), "klyz-webhook-infra-"));
-process.env.KLYZ_DB_PATH = join(tmpDir, "klyz.db");
 process.env.KLYZ_QUEUE_DRIVER = "redis";
 process.env.KLYZ_QUEUE_NAME = `klyz-test-${Math.random().toString(36).slice(2, 10)}`;
 process.env.KLYZ_WORKER_CONCURRENCY = "2";
 process.env.KLYZ_EXECUTION_TIMEOUT_MS = "0";
+
+/* One private database for this file: nothing else can see its rows. */
+openTestDatabase("klyz_webhook_infra");
 
 import { defaultActor } from "@/lib/server/identity";
 import { getExecutionDetailFor } from "@/lib/server/execution-service";
@@ -29,7 +27,7 @@ import { closeQueue, queueStats } from "@/lib/queue";
 import { closeWorker, startWorker } from "@/lib/queue/worker";
 import { getQueue } from "@/lib/queue/redis-driver";
 import { closeRedis } from "@/lib/server/redis";
-import { getDb } from "@/lib/server/db";
+import { endTestDatabase, openTestDatabase } from "@/lib/server/testing";
 import { POST as receive } from "@/app/api/webhooks/[...key]/route";
 import type { Workflow } from "@/lib/workflow/types";
 
@@ -136,12 +134,7 @@ afterAll(async () => {
   }
   await closeQueue();
   await closeRedis();
-  try {
-    getDb().close();
-  } catch {
-    /* already closed */
-  }
-  rmSync(tmpDir, { recursive: true, force: true });
+  await endTestDatabase();
 });
 
 describe("webhook publish → receive → worker", () => {

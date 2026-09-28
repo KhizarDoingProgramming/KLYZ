@@ -381,10 +381,18 @@ export function persistEvent(event: EngineEvent): void {
         event.stepId,
       );
       if (started) {
+        /* `duration_ms` clamped to zero, written as CASE: `max(a, b)`
+           over two values is a SQLite scalar function, and PostgreSQL
+           only has `max` as an aggregate. `started_at IS NULL`
+           reproduces the old `at - COALESCE(started_at, at)` = 0. */
         sqlRun(
           `UPDATE execution_steps
              SET status = 'skipped', completed_at = ?,
-                 duration_ms = MAX(0, ? - COALESCE(started_at, ?)),
+                 duration_ms = CASE
+                   WHEN started_at IS NULL THEN 0
+                   WHEN ? <= started_at THEN 0
+                   ELSE ? - started_at
+                 END,
                  error = NULL, branch = NULL, metadata = ?
            WHERE id = ?`,
           event.at,

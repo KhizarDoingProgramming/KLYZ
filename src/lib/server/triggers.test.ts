@@ -1,19 +1,17 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 
 /* One real database for the whole file — the scheduler, the receiver
    and the API all talk to it exactly as they do in production. */
-const tmpDir = mkdtempSync(join(tmpdir(), "klyz-trigger-test-"));
-process.env.KLYZ_DB_PATH = join(tmpDir, "klyz.db");
 process.env.KLYZ_QUEUE_DRIVER = "memory";
+
+/* One private database for this file: nothing else can see its rows. */
+openTestDatabase("klyz_triggers");
 
 import { HttpError } from "./http";
 import { defaultActor } from "./identity";
-import { getDb, queryAll, queryOne, run as sqlRun } from "./db";
+import { queryAll, queryOne, run as sqlRun } from "./db";
 import { resetRateLimits } from "./rate-limit";
-import { createTestAccount, type TestAccount } from "./testing";
+import { endTestDatabase, openTestDatabase, createTestAccount, type TestAccount } from "./testing";
 import {
   createWorkflowFor,
   getWorkflowFor,
@@ -36,13 +34,8 @@ import type { Workflow } from "@/lib/workflow/types";
 
 const actor = defaultActor();
 
-afterAll(() => {
-  try {
-    getDb().close();
-  } catch {
-    /* already closed */
-  }
-  rmSync(tmpDir, { recursive: true, force: true });
+afterAll(async () => {
+  await endTestDatabase();
 });
 
 beforeEach(() => {

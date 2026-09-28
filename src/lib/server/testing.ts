@@ -1,7 +1,8 @@
 import { randomBytes } from "node:crypto";
 
 import { createSession, createUser, SESSION_COOKIE, findUserByEmail, toUserView } from "./auth";
-import { run as sqlRun } from "./db";
+import { closeDatabase, run as sqlRun } from "./db";
+import { createTestDatabaseSync, dropTestDatabaseSync } from "./pg/test-database";
 import type { AuthenticatedActor, Role } from "./identity";
 
 /**
@@ -114,4 +115,44 @@ export function userViewOf(account: TestAccount) {
     created_at: 0,
     updated_at: 0,
   });
+}
+
+/* ------------------------------------------------------------------ */
+/* The database this file owns                                         */
+/* ------------------------------------------------------------------ */
+
+let owned: string | null = null;
+
+/**
+ * Give this test file its own PostgreSQL database.
+ *
+ * A database per file rather than a schema per file: one file's
+ * `DROP`/`TRUNCATE` is then invisible to the others, and connection
+ * state (`search_path`, prepared statements, advisory locks) needs no
+ * thought at all. Names are random, so parallel workers never collide.
+ *
+ * Synchronous, and called from module scope. Test files read the
+ * database through module-level calls such as `defaultActor()`, which
+ * run while the module is still being evaluated — long before any hook —
+ * so a database created in `beforeAll` would arrive too late.
+ */
+export function openTestDatabase(prefix: string): void {
+  if (owned) throw new Error(`test database ${owned} is already open`);
+  owned = createTestDatabaseSync(prefix);
+  process.env.KLYZ_DB_DRIVER = "postgres";
+  /* The SQLite path is a per-process file; leaving it set would let a
+     driver re-resolution fall back to a store nothing else reads. */
+  delete process.env.KLYZ_DB_PATH;
+}
+
+/**
+ * Release the bridge and drop the database. The last statement of
+ * `afterAll`: anything that still queries after it has no store, which
+ * is the point — the rows must not outlive the file that made them.
+ */
+export async function endTestDatabase(): Promise<void> {
+  const name = owned;
+  owned = null;
+  await closeDatabase();
+  if (name) dropTestDatabaseSync(name);
 }

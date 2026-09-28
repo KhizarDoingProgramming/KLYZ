@@ -37,6 +37,12 @@ const SENSITIVE_SUBSTRINGS = [
   "accesskey",
   "privatekey",
   "session",
+  /* Connection strings carry `user:password@` in the URL itself, so
+     key-based redaction has to catch the key, not just the scheme. */
+  "connectionstring",
+  "databaseurl",
+  "pgurl",
+  "dburl",
 ];
 
 /* `auth` is matched as a *word*, never as a substring — otherwise

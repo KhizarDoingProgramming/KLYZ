@@ -1,7 +1,4 @@
 import { afterAll, describe, expect, it } from "vitest";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 
 /*
  * Integration tests for the execution service + engine against a real
@@ -11,12 +8,13 @@ import { join } from "node:path";
  * surface.
  */
 
-const tmpDir = mkdtempSync(join(tmpdir(), "klyz-test-"));
-process.env.KLYZ_DB_PATH = join(tmpDir, "klyz.db");
+/* One private database for this file: nothing else can see its rows. */
+openTestDatabase("klyz_execution_service");
 
 import { HttpError } from "./http";
 import { defaultActor } from "./identity";
-import { getDb, queryAll, queryOne } from "./db";
+import { queryAll, queryOne } from "./db";
+import { endTestDatabase, openTestDatabase } from "./testing";
 import {
   cancelExecutionFor,
   getExecutionDetailFor,
@@ -28,13 +26,8 @@ import type { Workflow } from "@/lib/workflow/types";
 
 const actor = defaultActor();
 
-afterAll(() => {
-  try {
-    getDb().close();
-  } catch {
-    /* already closed */
-  }
-  rmSync(tmpDir, { recursive: true, force: true });
+afterAll(async () => {
+  await endTestDatabase();
 });
 
 /* ------------------------------------------------------------------ */

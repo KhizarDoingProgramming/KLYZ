@@ -528,7 +528,7 @@ export function getTriggerRow(workflowId: string): TriggerRow | null {
 /**
  * Claim one occurrence.
  *
- * `INSERT OR IGNORE` against a `(trigger_id, occurrence_key)` primary
+ * `ON CONFLICT DO NOTHING` against a `(trigger_id, occurrence_key)` primary
  * key is the whole race story: two scheduler ticks, or a tick and a
  * manual re-fire, both try, exactly one gets a row, and only that one
  * goes on to create an execution. Returns true for the winner.
@@ -539,9 +539,10 @@ export function claimOccurrence(
   at: number = now(),
 ): boolean {
   const result = exec(
-    `INSERT OR IGNORE INTO trigger_fires
+    `INSERT INTO trigger_fires
        (trigger_id, workspace_id, workflow_id, occurrence_key, fired_at, status)
-     VALUES (?, ?, ?, ?, ?, 'claimed')`,
+     VALUES (?, ?, ?, ?, ?, 'claimed')
+     ON CONFLICT DO NOTHING`,
     row.id,
     row.workspace_id,
     row.workflow_id,

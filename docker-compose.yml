@@ -2,8 +2,14 @@ name: klyz
 
 # Development infrastructure.
 #
-#   docker compose up -d redis postgres   # queue + integration database
-#   npm run dev:all                       # app + worker on the host
+#   npm run infra:up          # queue + Postgres, then the app database
+#   npm run dev:all           # app + worker on the host
+#
+# `postgres` holds three databases: `klyz` for the application,
+# `klyz_integrations` for the demo/lead fixtures and the integration
+# tests, and the maintenance `postgres` database. `infra:up` creates
+# `klyz` when it is missing (scripts/ensure-app-db.mjs) — an init SQL
+# script would only run on a fresh volume.
 #
 # The optional "app"/"worker" services run the same commands inside
 # containers:  docker compose --profile app up -d
@@ -46,6 +52,8 @@ services:
       KLYZ_REDIS_URL: redis://redis:6379
       KLYZ_QUEUE_DRIVER: redis
       KLYZ_PG_URL: postgres://klyz:klyz@postgres:5432/klyz_integrations
+      KLYZ_DATABASE_URL: postgres://klyz:klyz@postgres:5432/klyz
+      KLYZ_DB_DRIVER: postgres
     ports:
       - "3000:3000"
     volumes:
@@ -66,6 +74,8 @@ services:
       KLYZ_REDIS_URL: redis://redis:6379
       KLYZ_QUEUE_DRIVER: redis
       KLYZ_PG_URL: postgres://klyz:klyz@postgres:5432/klyz_integrations
+      KLYZ_DATABASE_URL: postgres://klyz:klyz@postgres:5432/klyz
+      KLYZ_DB_DRIVER: postgres
     volumes:
       - .:/app
       - /app/node_modules
