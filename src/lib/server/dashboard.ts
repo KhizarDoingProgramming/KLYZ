@@ -114,7 +114,7 @@ export function getWorkflowHealth(actor: Actor, limit = 6): WorkflowHealthRow[] 
      LEFT JOIN executions e ON e.workflow_id = w.id AND e.workspace_id = w.workspace_id
      WHERE w.workspace_id = ?
      GROUP BY w.id
-     ORDER BY (last_at IS NULL), last_at DESC, w.updated_at DESC
+     ORDER BY (MAX(e.started_at) IS NULL), MAX(e.started_at) DESC, w.updated_at DESC
      LIMIT ?`,
     actor.workspaceId,
     limit,

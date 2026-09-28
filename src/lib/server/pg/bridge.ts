@@ -1,3 +1,4 @@
+import { isAbsolute, join } from "node:path";
 import { createRequire } from "node:module";
 import { Worker } from "node:worker_threads";
 
@@ -41,13 +42,29 @@ function intEnv(name: string, fallback: number): number {
   return Math.floor(parsed);
 }
 
-/** Absolute path of the `pg` package, when it can be located from here. */
+/**
+ * Absolute path of the `pg` package, when it can be located from here.
+ *
+ * A bundler rewrites `import.meta.url` to a virtual id, under which
+ * `createRequire(...).resolve("pg")` hands back that id — Turbopack's
+ * `[externals]/pg [external] (...)` — rather than throwing, so the
+ * `catch` never runs and a non-path string reaches the worker. Resolve
+ * from the real filesystem first (the same base as the worker's
+ * `requireBase`) and accept only an on-disk absolute path; anything
+ * else yields `null`, which makes the worker fall back to its own
+ * `createRequire(requireBase)("pg")`.
+ */
 function resolvePgPath(): string | null {
-  try {
-    return createRequire(import.meta.url).resolve("pg");
-  } catch {
-    return null;
+  const bases: string[] = [join(process.cwd(), "__klyz_pg_bridge__.js"), import.meta.url];
+  for (const base of bases) {
+    try {
+      const resolved = createRequire(base).resolve("pg");
+      if (isAbsolute(resolved)) return resolved;
+    } catch {
+      // fall through to the next base
+    }
   }
+  return null;
 }
 
 export interface PgResult {
