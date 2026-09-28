@@ -8,6 +8,8 @@ import { closeWorker, startWorker } from "@/lib/queue/worker";
 import { closeRedis } from "@/lib/server/redis";
 import { startScheduler } from "@/lib/server/scheduler";
 
+import { startHealthServer, type HealthServer } from "./health";
+
 /**
  * KLYZ worker process.
  *
@@ -32,6 +34,12 @@ async function main(): Promise<void> {
     `[worker] queue=${config.queue} concurrency=${config.concurrency} attempts=${config.attempts} timeout=${config.executionTimeoutMs}ms`,
   );
 
+  /* The platform probes this socket to decide the container is alive, so
+     it is bound before anything else: a worker that is reachable but still
+     connecting to Redis is healthier than one with no listener at all. */
+  const health: HealthServer = await startHealthServer();
+  console.log(`[worker] health listening on http://${health.host}:${health.port}/health`);
+
   await startWorker({ concurrency: config.concurrency });
   console.log("[worker] ready — waiting for jobs");
 
@@ -55,6 +63,7 @@ async function main(): Promise<void> {
     schedulerHandle?.stop();
     void (async () => {
       try {
+        await health.close();
         await closeWorker();
         await closeRedis();
       } finally {

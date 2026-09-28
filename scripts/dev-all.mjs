@@ -12,10 +12,10 @@ import process from "node:process";
 
 const procs = [];
 
-function start(name, command, args, color) {
+function start(name, command, args, color, extraEnv) {
   const child = spawn(command, args, {
     stdio: ["ignore", "pipe", "pipe"],
-    env: process.env,
+    env: { ...process.env, ...extraEnv },
     shell: process.platform === "win32",
   });
   const prefix = `\x1b[${color}m[${name}]\x1b[0m `;
@@ -51,7 +51,12 @@ function shutdown() {
 process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
 
-start("worker", "npx", ["tsx", "watch", "src/worker/index.ts"], "35");
+/* The worker exposes its health endpoint on PORT (default 3000), which
+   the web process already owns in dev — and 3001 is often taken by other
+   local services — so give it a port of its own. */
+start("worker", "npx", ["tsx", "watch", "src/worker/index.ts"], "35", { PORT: "3002" });
 start("web", "npm", ["run", "dev"], "36");
 
-console.log("klyz dev: web on http://localhost:3000, worker consuming workflow-executions");
+console.log(
+  "klyz dev: web on http://localhost:3000, worker health on http://localhost:3002/health, worker consuming workflow-executions",
+);

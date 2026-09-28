@@ -103,4 +103,8 @@ RUN ln -s /opt/tsx/node_modules/.bin/tsx /usr/local/bin/tsx \
 
 USER node
 
-CMD ["npm", "run", "worker"]
+# `npm run worker` would make npm PID 1, and npm tears its child down
+# without forwarding SIGTERM — the worker's drain handler (close health
+# server, BullMQ worker, Redis) would never run. Run the entry point
+# directly so the signal reaches the process that registered it.
+CMD ["tsx", "src/worker/index.ts"]
