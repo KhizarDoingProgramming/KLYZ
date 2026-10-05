@@ -8,6 +8,14 @@
 # external packages it reaches are bullmq, ioredis, cron-parser and pg.
 # The web server keeps its own image in ./Dockerfile.
 
+FROM node:22-bookworm-slim AS builder
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci
+COPY src ./src
+COPY tsconfig.json ./
+RUN npx esbuild src/worker/index.ts --bundle --platform=node --target=node22 --format=esm --external:bullmq --external:ioredis --external:cron-parser --external:pg --outfile=dist/worker.mjs
+
 FROM node:22-bookworm-slim AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
@@ -15,18 +23,11 @@ COPY package.json package-lock.json ./
 # Production dependencies only, resolved strictly from the lockfile.
 RUN npm ci --omit=dev
 
-# `tsx` executes the TypeScript entry point but is declared a
-# devDependency, so --omit=dev would skip it (and asking npm to add it
-# to this tree would reify the whole devDependency set). It therefore
-# gets its own prefix, at the exact version the lockfile resolved.
-RUN npm install --prefix /opt/tsx --no-save \
-      tsx@$(node -p "require('./package-lock.json').packages['node_modules/tsx'].version")
-
 # Keep only the packages the worker actually depends on, computed from
 # this lockfile — everything else (next, @next/swc, sharp, lucide-react,
 # react, vite, tailwind, eslint …) is web-server or tooling weight that
 # the worker never imports.
-RUN node <<'EOF'
+RUN node <<'SCRIPT'
 const fs = require("node:fs");
 const lock = JSON.parse(fs.readFileSync("package-lock.json", "utf8"));
 const pkgs = lock.packages;
@@ -86,7 +87,7 @@ for (const entry of fs.readdirSync("node_modules")) {
   else drop("node_modules/" + entry);
 }
 console.log("prune: kept " + kept + " packages, dropped " + dropped);
-EOF
+SCRIPT
 
 FROM node:22-bookworm-slim AS runner
 WORKDIR /app
@@ -95,11 +96,9 @@ ENV NODE_ENV=production
 # Readable/writable only where the worker writes: .klyz/ holds the SQLite
 # store, its WAL files and the dev-only credential key fallback.
 COPY --from=deps --chown=node:node /app/node_modules ./node_modules
-COPY --from=deps --chown=node:node /opt/tsx /opt/tsx
-COPY --chown=node:node package.json tsconfig.json ./
-COPY --chown=node:node src ./src
-RUN ln -s /opt/tsx/node_modules/.bin/tsx /usr/local/bin/tsx \
- && mkdir -p /app/.klyz && chown node:node /app/.klyz
+COPY --from=builder --chown=node:node /app/dist ./dist
+COPY --chown=node:node package.json ./
+RUN mkdir -p /app/.klyz && chown node:node /app/.klyz
 
 USER node
 
@@ -107,4 +106,4 @@ USER node
 # without forwarding SIGTERM — the worker's drain handler (close health
 # server, BullMQ worker, Redis) would never run. Run the entry point
 # directly so the signal reaches the process that registered it.
-CMD ["node", "--import", "tsx", "src/worker/index.ts"]
+CMD ["node", "dist/worker.mjs"]

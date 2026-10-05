@@ -6,9 +6,10 @@
   "scripts": {
     "dev": "next dev",
     "dev:all": "node scripts/dev-all.mjs",
-    "worker": "node --import tsx src/worker/index.ts",
+    "worker": "node dist/worker.mjs",
     "worker:dev": "tsx watch src/worker/index.ts",
     "build": "next build",
+    "build:worker": "esbuild src/worker/index.ts --bundle --platform=node --target=node22 --format=esm --external:bullmq --external:ioredis --external:cron-parser --external:pg --outfile=dist/worker.mjs",
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
