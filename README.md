@@ -113,3 +113,11 @@ For more detailed documentation, see:
 * [Security](docs/security.md)
 
 Feel free to open issues or submit pull requests. Ensure all code passes `npm run lint`, `npm run typecheck`, and `npm test` before submitting.
+
+---
+
+## 📝 Attribution & License
+
+KLYZ was originally created by **MUSTAFA**. 
+
+This project is open-source. You are free to fork, clone, modify, and use it in accordance with the project's license. If you reuse or build upon this work, please preserve this attribution to credit the original author.

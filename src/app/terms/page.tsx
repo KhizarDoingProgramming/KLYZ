@@ -95,10 +95,13 @@ export default function TermsPage() {
       <footer className="border-t border-edge bg-app mt-20">
         <div className="kz-frame py-10">
           <div className="flex flex-col gap-6 sm:flex-row sm:items-center">
-            <div className="flex items-center gap-3">
+            <div className="flex flex-col gap-1">
               <Link href="/" aria-label="KLYZ home">
                 <KlyzMark className="h-5 w-5 text-fg" />
               </Link>
+              <p className="text-[11px] text-subtle/70 mt-1">
+                Created by <strong>MUSTAFA</strong>
+              </p>
             </div>
             <nav className="flex items-center gap-6 sm:ml-auto">
               <Link href="/terms" className="text-[12px] text-subtle hover:text-fg transition-colors">

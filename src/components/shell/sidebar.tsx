@@ -146,6 +146,12 @@ export function Sidebar({
         )}
       >
         {!collapsed && <SystemPulse />}
+        {!collapsed && (
+          <div className="mb-2 flex items-center justify-between px-2.5 font-mono text-[9px] uppercase tracking-[0.1em] text-subtle/70">
+            <span>By Mustafa</span>
+            <Link href="/terms" className="hover:text-fg transition-colors">About</Link>
+          </div>
+        )}
         <button
           type="button"
           onClick={onToggleCollapse}

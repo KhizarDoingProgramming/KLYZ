@@ -377,9 +377,14 @@ export default function LandingPage() {
               <Link href="/" aria-label="KLYZ home">
                 <KlyzMark className="h-6 w-6 text-fg" />
               </Link>
-              <p className="text-[12.5px] text-subtle">
-                Local build — workflow drafts stay in this browser.
-              </p>
+              <div className="flex flex-col gap-1">
+                <p className="text-[12.5px] text-subtle">
+                  Local build — workflow drafts stay in this browser.
+                </p>
+                <p className="text-[11px] text-subtle/70">
+                  Created by <strong>MUSTAFA</strong>
+                </p>
+              </div>
             </div>
 
             <nav
