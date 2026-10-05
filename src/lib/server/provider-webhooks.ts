@@ -264,8 +264,9 @@ export async function publishProviderWebhook(
   if (provider === "github") {
     const registration = await registerGitHubHook(actor, row, url, secret, events);
     if (registration.warning) {
+      const fresh = queryOne<Row>("SELECT * FROM provider_webhooks WHERE id = ?", row.id)!;
       return {
-        webhook: { ...toView(row), secret },
+        webhook: { ...toView(fresh), secret },
         warning: registration.warning,
       };
     }
@@ -421,8 +422,8 @@ async function registerGitHubHook(
           ? "GitHub refused to create the repository webhook."
           : "The repository webhook could not be created.",
         hint: scopeProblem
-          ? "The connection needs the admin:repo_hook scope. Reconnect GitHub with KLYZ_GITHUB_SCOPES=public_repo,admin:repo_hook (add repo for private repositories), then publish again — or add the webhook by hand using the URL and secret shown here."
-          : "Check the repository name and the connection, then publish again — or add the webhook by hand using the URL and secret shown here.",
+          ? `The connection needs the admin:repo_hook scope (${message}). Reconnect GitHub with KLYZ_GITHUB_SCOPES=public_repo,admin:repo_hook (add repo for private repositories), then publish again — or add the webhook by hand using the URL and secret shown here.`
+          : `GitHub responded with an error: ${message}. Check the repository name and the connection, then publish again — or add the webhook by hand using the URL and secret shown here.`,
       },
     };
   }

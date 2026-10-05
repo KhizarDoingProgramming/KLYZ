@@ -183,28 +183,45 @@ export function isRetryableStatus(status: number): boolean {
 export function providerMessageFrom(body: unknown): string | undefined {
   if (!body || typeof body !== "object") return undefined;
   const record = body as Record<string, unknown>;
+  
+  let mainMessage = "";
   if (typeof record.message === "string" && record.message.trim()) {
-    return record.message.trim();
+    mainMessage = record.message.trim();
   }
-  const error = record.error;
-  if (typeof error === "string" && error.trim()) return error.trim();
-  if (error && typeof error === "object") {
-    const inner = error as Record<string, unknown>;
-    if (typeof inner.message === "string" && inner.message.trim()) {
-      return inner.message.trim();
-    }
-    const list = inner.errors;
-    if (Array.isArray(list) && list.length > 0) {
-      const first = list[0];
-      if (typeof first === "string") return first;
-      if (first && typeof first === "object") {
-        const item = first as Record<string, unknown>;
-        const reason = item.reason ?? item.message ?? item.field;
-        if (typeof reason === "string") return reason;
-      }
+
+  const details: string[] = [];
+  
+  // GitHub puts errors at the root: { message: "...", errors: [...] }
+  // Google puts them inside error: { error: { message: "...", errors: [...] } }
+  const errorObj = record.error && typeof record.error === "object" ? (record.error as Record<string, unknown>) : null;
+  
+  if (!mainMessage && errorObj && typeof errorObj.message === "string" && errorObj.message.trim()) {
+    mainMessage = errorObj.message.trim();
+  }
+  if (!mainMessage && typeof record.error === "string" && record.error.trim()) {
+    mainMessage = record.error.trim();
+  }
+  
+  const list = Array.isArray(record.errors) ? record.errors : 
+               (errorObj && Array.isArray(errorObj.errors)) ? errorObj.errors : [];
+               
+  for (const item of list) {
+    if (typeof item === "string") {
+      details.push(item);
+    } else if (item && typeof item === "object") {
+      const i = item as Record<string, unknown>;
+      const reason = i.message ?? i.reason ?? i.field;
+      if (typeof reason === "string" && reason.trim()) details.push(reason.trim());
     }
   }
-  if (typeof record.reason === "string") return record.reason;
+
+  if (mainMessage && details.length > 0) {
+    return `${mainMessage}: ${details.join(", ")}`;
+  }
+  if (mainMessage) return mainMessage;
+  if (details.length > 0) return details.join(", ");
+  if (typeof record.reason === "string") return record.reason.trim();
+  
   return undefined;
 }
 

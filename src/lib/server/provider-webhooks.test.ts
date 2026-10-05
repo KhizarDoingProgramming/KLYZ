@@ -1,5 +1,9 @@
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 import { createHmac } from "node:crypto";
+
+vi.mock("@/lib/integrations/github/api", () => ({
+  githubRequest: vi.fn(),
+}));
 
 process.env.KLYZ_QUEUE_DRIVER = "memory";
 
@@ -743,5 +747,73 @@ describe("publishing a Slack endpoint", () => {
     } finally {
       delete process.env.SLACK_SIGNING_SECRET;
     }
+  });
+});
+
+import { githubRequest } from "@/lib/integrations/github/api";
+import { ProviderError } from "@/lib/integrations/provider/errors";
+
+const githubConnection = upsertOAuthCredential({
+  workspaceId: actor.workspaceId,
+  kind: "github",
+  name: "GitHub",
+  fields: { accessToken: "gh_token_1" },
+  account: "klyz",
+  scopes: ["public_repo", "admin:repo_hook"],
+  expiresAt: null,
+});
+
+describe("publishing a GitHub endpoint", () => {
+  it("registers a webhook and updates the endpoint status to active", async () => {
+    const id = "wf_github_publish_success";
+    vi.mocked(githubRequest).mockResolvedValueOnce({ id: 123456 });
+
+    const result = await publishProviderWebhook(
+      actor,
+      workflow(id, { credential: githubConnection.id, event: "issues.opened", repository: "klyz/platform" }),
+    );
+
+    expect(result.warning).toBeUndefined();
+    expect(result.webhook.provider).toBe("github");
+    expect(result.webhook.mode).toBe("managed");
+    expect(result.webhook.status).toBe("active");
+    expect(result.webhook.remoteHookId).toBe("123456");
+    
+    // Ensure githubRequest was called correctly
+    expect(githubRequest).toHaveBeenCalledWith(
+      expect.anything(),
+      "hooks.create",
+      "/repos/klyz/platform/hooks",
+      expect.objectContaining({
+        method: "POST",
+        body: expect.objectContaining({
+          name: "web",
+          events: ["issues"],
+          config: expect.objectContaining({ content_type: "json" }),
+        }),
+      }),
+    );
+  });
+
+  it("surfaces GitHub API validation failures in the warning", async () => {
+    const id = "wf_github_publish_failure";
+    vi.mocked(githubRequest).mockRejectedValueOnce(
+      new ProviderError("github", "GitHub: Validation Failed: Config url is not a valid URL", {
+        operation: "hooks.create",
+        category: "validation",
+        status: 422,
+        providerMessage: "Validation Failed: Config url is not a valid URL",
+      }),
+    );
+
+    const result = await publishProviderWebhook(
+      actor,
+      workflow(id, { credential: githubConnection.id, event: "issues.opened", repository: "klyz/platform" }),
+    );
+
+    expect(result.webhook.status).toBe("error");
+    expect(result.webhook.lastError).toBe("GitHub: Validation Failed: Config url is not a valid URL");
+    expect(result.warning?.code).toBe("GITHUB_HOOK_REGISTRATION_FAILED");
+    expect(result.warning?.hint).toContain("Validation Failed: Config url is not a valid URL");
   });
 });
