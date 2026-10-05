@@ -15,8 +15,8 @@
  */
 
 export const PG_WORKER_SOURCE = `
-import { parentPort, workerData } from "node:worker_threads";
-import { createRequire } from "node:module";
+const { parentPort, workerData } = require("node:worker_threads");
+const { createRequire } = require("node:module");
 
 const STATE_BOOT = 0;
 const STATE_ONLINE = 1;
@@ -157,39 +157,41 @@ try {
   fail(error && error.message ? error.message : String(error), error && error.code);
 }
 
-while (true) {
-  Atomics.wait(header, REQUEST_READY, 0);
-  Atomics.store(header, REQUEST_READY, 0);
+(async function() {
+  while (true) {
+    Atomics.wait(header, REQUEST_READY, 0);
+    Atomics.store(header, REQUEST_READY, 0);
 
-  const requestLength = header[1];
-  let request;
-  try {
-    request = JSON.parse(decoder.decode(body.subarray(0, requestLength)));
-  } catch (error) {
-    fail("undecodable bridge request: " + error.message, "KLYZ_BRIDGE_PROTOCOL");
-    continue;
-  }
-
-  try {
-    /* No bind parameters means the simple query protocol, which is the
-       only shape PostgreSQL accepts a multi-statement string in — that
-       is how a whole migration is applied as one implicit transaction. */
-    const result =
-      request.params && request.params.length
-        ? await pool.query(request.sql, request.params)
-        : await pool.query(request.sql);
-    if (request.wantRows) {
-      writeOk(encodeRows(result.rows), result.rowCount || 0);
-    } else {
-      writeOk("[]", result.rowCount || 0);
+    const requestLength = header[1];
+    let request;
+    try {
+      request = JSON.parse(decoder.decode(body.subarray(0, requestLength)));
+    } catch (error) {
+      fail("undecodable bridge request: " + error.message, "KLYZ_BRIDGE_PROTOCOL");
+      continue;
     }
-  } catch (error) {
-    fail(
-      error && error.message ? error.message : String(error),
-      error && error.code,
-    );
+
+    try {
+      /* No bind parameters means the simple query protocol, which is the
+         only shape PostgreSQL accepts a multi-statement string in — that
+         is how a whole migration is applied as one implicit transaction. */
+      const result =
+        request.params && request.params.length
+          ? await pool.query(request.sql, request.params)
+          : await pool.query(request.sql);
+      if (request.wantRows) {
+        writeOk(encodeRows(result.rows), result.rowCount || 0);
+      } else {
+        writeOk("[]", result.rowCount || 0);
+      }
+    } catch (error) {
+      fail(
+        error && error.message ? error.message : String(error),
+        error && error.code,
+      );
+    }
   }
-}
+})();
 `;
 
 export const PG_HEADER_SLOTS = 8;
