@@ -248,7 +248,10 @@ function CanvasSurface() {
         deleteKeyCode={null}
         multiSelectionKeyCode={null}
         selectionKeyCode={null}
-        onNodeClick={(_, node) => select(node.id, null)}
+        onNodeClick={(_, node) => {
+          select(node.id, null);
+          useEditorStore.getState().setInspectorOpen(true);
+        }}
         onEdgeClick={(_, edge) => select(null, edge.id)}
         onPaneClick={() => select(null, null)}
         onNodeDoubleClick={(_, node) => {
