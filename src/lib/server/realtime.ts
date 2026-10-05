@@ -35,10 +35,9 @@ export function relayReady(): boolean {
   return relayState().subscriberReady;
 }
 
-/** Persist-then-publish entry point (see execution-store.emitPersisted). */
 export function publishEvent(executionId: string, event: EngineEvent): void {
   const client = tryRedis();
-  if (client && client.status === "ready") {
+  if (client) {
     void client
       .publish(EVENTS_CHANNEL, JSON.stringify(event))
       .catch(() => {

@@ -99,7 +99,11 @@ export function tryRedis(): Redis | null {
   if (clients.failed) return null;
   if (!clients.pub) {
     try {
-      const client = new Redis({ ...redisOptions(redisUrl()), lazyConnect: false });
+      const client = new Redis({
+        ...redisOptions(redisUrl()),
+        enableOfflineQueue: true,
+        lazyConnect: false,
+      });
       client.on("error", () => {
         /* reported through status checks; never let this throw */
       });
@@ -122,7 +126,10 @@ export function trySubscriber(): Redis | null {
   if (clients.failed) return null;
   if (!clients.sub) {
     try {
-      const client = new Redis(redisOptions(redisUrl()));
+      const client = new Redis({
+        ...redisOptions(redisUrl()),
+        enableOfflineQueue: true,
+      });
       client.on("error", () => {
         /* swallow — the relay reports health through status */
       });
