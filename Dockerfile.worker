@@ -107,4 +107,4 @@ USER node
 # without forwarding SIGTERM — the worker's drain handler (close health
 # server, BullMQ worker, Redis) would never run. Run the entry point
 # directly so the signal reaches the process that registered it.
-CMD ["tsx", "src/worker/index.ts"]
+CMD ["node", "--import", "tsx", "src/worker/index.ts"]

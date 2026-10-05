@@ -64,7 +64,7 @@ export function redisOptions(raw: string): RedisConnectionOptions {
   return {
     ...parsed,
     enableOfflineQueue: false,
-    maxRetriesPerRequest: 1,
+    maxRetriesPerRequest: null,
     retryStrategy: (times) => Math.min(times * 200, 5_000),
   };
 }
