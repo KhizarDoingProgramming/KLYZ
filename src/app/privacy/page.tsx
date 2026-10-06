@@ -88,7 +88,7 @@ export default function PrivacyPage() {
 
             <h2 className="text-[19px] mt-10 mb-4 border-b border-hairline pb-2">7. Contact Us</h2>
             <p>
-              If you have any questions or requests regarding your data, please contact us at privacy@klyz.example.com.
+              If you have any questions or requests regarding your data, please contact us at <a href="mailto:gmkhizar9@gmail.com" className="text-fg underline hover:text-signal transition-colors">gmkhizar9@gmail.com</a>.
             </p>
           </div>
         </div>

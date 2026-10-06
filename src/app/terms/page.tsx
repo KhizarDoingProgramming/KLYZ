@@ -85,7 +85,7 @@ export default function TermsPage() {
 
             <h2 className="text-[19px] mt-10 mb-4 border-b border-hairline pb-2">8. Contact</h2>
             <p>
-              For legal inquiries regarding these Terms, please contact legal@klyz.example.com.
+              For legal inquiries regarding these Terms, please contact <a href="mailto:gmkhizar9@gmail.com" className="text-fg underline hover:text-signal transition-colors">gmkhizar9@gmail.com</a>.
             </p>
           </div>
         </div>
