@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="src/app/icon.svg" width="120" alt="KLYZ Logo" />
+  <img src="public/logo.svg" width="120" alt="KLYZ Logo" />
   
   # KLYZ
 
