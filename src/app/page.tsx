@@ -405,6 +405,12 @@ export default function LandingPage() {
                   </Link>
                 ),
               )}
+              <Link href="/privacy" className="font-mono text-[11px] uppercase tracking-[0.14em] text-subtle transition-colors duration-micro hover:text-fg">
+                Privacy
+              </Link>
+              <Link href="/terms" className="font-mono text-[11px] uppercase tracking-[0.14em] text-subtle transition-colors duration-micro hover:text-fg">
+                Terms
+              </Link>
             </nav>
           </div>
         </div>
