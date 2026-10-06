@@ -105,6 +105,9 @@ export default function PrivacyPage() {
               <p className="text-[11px] text-subtle/70 mt-1">
                 Created by <strong>MUSTAFA</strong>
               </p>
+              <p className="text-[11px] text-subtle/70 mt-0.5">
+                Tested by <a href="https://umersmx.vercel.app" target="_blank" rel="noopener noreferrer" className="font-semibold hover:text-fg transition-colors">UMER</a>
+              </p>
             </div>
             <nav className="flex items-center gap-6 sm:ml-auto">
               <Link href="/terms" className="text-[12px] text-subtle hover:text-fg transition-colors">

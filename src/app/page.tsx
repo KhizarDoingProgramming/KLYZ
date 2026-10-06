@@ -384,6 +384,9 @@ export default function LandingPage() {
                 <p className="text-[11px] text-subtle/70">
                   Created by <strong>MUSTAFA</strong>
                 </p>
+                <p className="text-[11px] text-subtle/70">
+                  Tested by <a href="https://umersmx.vercel.app" target="_blank" rel="noopener noreferrer" className="font-semibold hover:text-fg transition-colors">UMER</a>
+                </p>
               </div>
             </div>
 
