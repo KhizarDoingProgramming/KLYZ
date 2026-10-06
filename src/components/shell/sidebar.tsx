@@ -147,14 +147,9 @@ export function Sidebar({
       >
         {!collapsed && <SystemPulse />}
         {!collapsed && (
-          <div className="mb-2 flex flex-col gap-1 px-2.5 font-mono text-[9px] uppercase tracking-[0.1em] text-subtle/70">
-            <div className="flex items-center justify-between">
-              <span>Created by MUSTAFA</span>
-              <Link href="/terms" className="hover:text-fg transition-colors">About</Link>
-            </div>
-            <div>
-              Tested by <a href="https://umersmx.vercel.app" target="_blank" rel="noopener noreferrer" className="font-semibold hover:text-fg transition-colors">UMER</a>
-            </div>
+          <div className="mb-2 flex items-center justify-between px-2.5 font-mono text-[9px] uppercase tracking-[0.1em] text-subtle/70">
+            <span>By Mustafa</span>
+            <Link href="/terms" className="hover:text-fg transition-colors">About</Link>
           </div>
         )}
         <button
